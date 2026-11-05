@@ -1056,7 +1056,7 @@ button{font-family:inherit}
       p.appendChild(hot(45, 115, 130, 205, '返回', function () { go('stack'); }));
       function theme(key) {
         if (S.rooms.indexOf(key) >= 0) { enterSpace(key); return; }
-        if (S.slots > 0) { S.slots--; S.rooms.push(key); enterSpace(key); toast('新空间已建立：' + THEMES[key].n); return; }
+        if (S.slots > 0) { S.slots--; S.rooms.push(key); enterSpace(key); return; }
         var box = el('div', { class: 'sheet' }, el('h3', { text: THEMES[key].n }), el('p', { text: '需要先解锁一个新角落，才能放进这个主题。' }),
           el('button', { class: 'btn', type: 'button', text: '去解锁', onclick: function () { closeSheet(); go('stack'); } }));
         openSheet(box);
