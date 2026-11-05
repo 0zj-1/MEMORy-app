@@ -1,0 +1,1082 @@
+<!doctype html>
+<html lang="zh-Hans">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MEMORy 小程序 demo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: a flow rail beside one phone; every coordinate inside the phone uses the deck's 1125x2000 artboard. */
+:root{
+  --ground:#1f2416;--rail-text:#e9e2c9;--rail-dim:#a6a68b;--rail-line:#3b4229;
+  --cream:#fbf1df;--cream-2:#f3e4c8;--brown:#6b4128;--brown-deep:#4a2c1a;--orange:#ef9a2f;--orange-deep:#c9731a;
+  --olive:#8c9068;--gold:#f4c430;--sans:"PingFang SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--ground);color:var(--rail-text);font-family:var(--sans);overflow:hidden;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#app{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:56px}
+#rail{width:300px;flex:none;max-height:calc(100% - 32px);overflow:auto}
+#rail h1{font-size:22px;font-weight:700;margin:0 0 4px}
+#rail .sub{font-size:13px;color:var(--rail-dim);line-height:1.6;margin:0 0 20px}
+#rail h2{font-size:13px;font-weight:500;color:var(--rail-dim);margin:20px 0 6px}
+.step{display:block;width:100%;text-align:left;background:none;border:0;border-left:2px solid var(--rail-line);color:var(--rail-text);font:inherit;font-size:14px;padding:7px 0 7px 12px;cursor:pointer}
+.step:hover{background:rgba(255,255,255,.05)}
+.step.on{border-left-color:var(--orange);color:var(--orange);font-weight:700}
+.tool{display:flex;gap:8px;margin-top:22px;flex-wrap:wrap}
+.tool button{background:none;border:1px solid var(--rail-line);color:var(--rail-text);font:inherit;font-size:13px;padding:7px 11px;border-radius:6px;cursor:pointer}
+.tool button:hover,.tool button[aria-pressed=true]{border-color:var(--orange);color:var(--orange)}
+#phone{position:relative;flex:none;overflow:hidden;background:#111;border-radius:36px;box-shadow:0 0 0 6px #0c0f08}
+#stage{position:absolute;left:0;top:0;width:1125px;height:2000px;transform-origin:0 0;overflow:hidden;color:var(--brown-deep);background:#8c9068;font-size:42px;line-height:1.5}
+@media (max-width:880px){#rail{display:none}#phone{border-radius:0;box-shadow:none}body{padding:0}}
+button{font-family:inherit}
+:focus-visible{outline:6px solid #fff;outline-offset:2px}
+.bg{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
+.hot{position:absolute;background:none;border:0;padding:0;cursor:pointer;border-radius:28px;-webkit-tap-highlight-color:transparent}
+.hot:active{background:rgba(255,255,255,.18)}
+#stage.showhot .hot,#stage.reveal .hot{outline:5px dashed rgba(255,214,102,.95);outline-offset:-5px;background:rgba(255,214,102,.14)}
+.page{position:absolute;inset:0;animation:fade .22s ease-out}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.bar{position:absolute;left:0;right:0;top:120px;height:120px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:72px;font-weight:700;text-shadow:0 3px 0 rgba(74,44,26,.55)}
+.back{position:absolute;left:44px;top:125px;width:110px;height:110px;background:none;border:0;color:#fff;cursor:pointer;display:grid;place-items:center}
+.back svg{width:76px;height:76px}
+.btn{border:0;cursor:pointer;font-weight:700;font-size:50px;border-radius:999px;min-height:128px;padding:0 44px;background:linear-gradient(#7c4d30,#5c3620);color:#fdf1da;box-shadow:0 7px 0 #3e2414;display:inline-flex;align-items:center;justify-content:center;gap:16px}
+.btn:active{transform:translateY(4px);box-shadow:0 3px 0 #3e2414}
+.btn.orange{background:linear-gradient(#f7ad4a,#ec8a22);box-shadow:0 7px 0 var(--orange-deep);color:#fff}
+.btn.ghost{background:var(--cream);color:var(--brown-deep);box-shadow:inset 0 0 0 4px var(--brown),0 7px 0 #b89c78}
+.btn[disabled]{filter:grayscale(.7);opacity:.7;cursor:not-allowed}
+.coin{display:inline-block;width:1em;height:1em;border-radius:50%;background:var(--gold);box-shadow:inset 0 0 0 .1em #d99a14,inset 0 0 0 .2em #ffe27a;vertical-align:-.12em;flex:none}
+.coins{display:inline-flex;align-items:center;gap:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.dock{position:absolute;left:52px;right:52px;bottom:70px;display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+.dock button{height:190px;border-radius:44px;background:var(--cream);border:4px solid var(--brown);box-shadow:0 7px 0 rgba(74,44,26,.55);color:var(--brown-deep);font-weight:700;font-size:40px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.dock button:active{transform:translateY(4px);box-shadow:0 3px 0 rgba(74,44,26,.55)}
+.dock svg{width:70px;height:70px}
+.roomlayer{position:absolute;inset:0;pointer-events:none}
+.sprite{position:absolute;cursor:grab;touch-action:none;user-select:none;-webkit-user-drag:none;pointer-events:auto;height:auto}
+.sprite.lifted{cursor:grabbing;filter:drop-shadow(0 14px 8px rgba(40,22,10,.5))}
+.gridsvg{position:absolute;left:0;top:0;width:1125px;height:2000px;pointer-events:none}
+.gridlines line{stroke:#8a6a3c;stroke-opacity:.38;stroke-width:2}
+.foot.good{fill:rgba(126,200,90,.5);stroke:#4f8f2e;stroke-width:4}
+.foot.bad{fill:rgba(220,70,50,.5);stroke:#a52d1d;stroke-width:4}
+.imgbtn{position:absolute;background:none;border:0;padding:0;cursor:pointer;z-index:950}
+.imgbtn img{display:block;width:100%}
+.imgbtn:active{transform:translateY(3px)}
+.itemchip{position:absolute;left:150px;right:150px;top:128px;min-height:92px;z-index:950;display:flex;align-items:center;justify-content:center;gap:20px;background:rgba(45,28,15,.82);color:#fdf1da;border-radius:999px;padding:6px 24px;font-size:36px;text-align:center}
+.itemchip b{font-weight:700}
+.itemchip button{flex:none;border:0;background:var(--orange);color:#fff;font-weight:700;font-size:36px;border-radius:999px;padding:12px 28px;cursor:pointer}
+.camview{position:absolute;left:50px;top:520px;width:1025px;height:1090px;object-fit:cover;border-radius:60px;background:#111;z-index:2}
+.corner-mark{position:absolute;width:90px;height:90px;border:12px solid #fff;z-index:3;pointer-events:none}
+.corner-mark.tl{left:80px;top:550px;border-right:0;border-bottom:0;border-top-left-radius:24px}
+.corner-mark.tr{left:955px;top:550px;border-left:0;border-bottom:0;border-top-right-radius:24px}
+.corner-mark.bl{left:80px;top:1490px;border-right:0;border-top:0;border-bottom-left-radius:24px}
+.corner-mark.br{left:955px;top:1490px;border-left:0;border-top:0;border-bottom-right-radius:24px}
+.camnote{position:absolute;left:90px;right:90px;top:300px;text-align:center;color:#fff;font-size:42px;font-weight:500;line-height:1.45;text-shadow:0 2px 0 rgba(40,25,14,.55);z-index:4}
+.tag.sample{position:absolute;right:60px;top:440px;z-index:4;cursor:pointer;font-family:inherit}
+.convbox{position:absolute;left:162px;top:300px;width:800px;height:800px;border-radius:50px;overflow:hidden;background:#111}
+.convbox img{width:100%;height:100%;object-fit:cover;display:block}
+.beam.loop{left:0;width:100%;animation:sweepbox 1.8s ease-in-out infinite alternate}
+@keyframes sweepbox{from{top:-30px}to{top:770px}}
+.convtext{position:absolute;left:60px;right:60px;top:1170px;text-align:center;color:#fff;font-size:60px;font-weight:700}
+.convsub{position:absolute;left:90px;right:90px;top:1270px;text-align:center;color:#e3e0c6;font-size:40px}
+.pair{position:absolute;left:50px;right:50px;top:360px;display:grid;grid-template-columns:1fr 1fr;gap:30px}
+.pair figure{margin:0;display:flex;flex-direction:column;gap:12px;align-items:center;color:#fff;font-size:40px}
+.pair img{width:100%;height:560px;object-fit:contain;border-radius:40px;background:#3f4431;display:block}
+.pair .after img{background:#f6e2b4}
+.steppers{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.stepper{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;justify-items:center;background:#fffaf0;border:4px solid #d8bf97;border-radius:32px;padding:14px 6px;row-gap:6px}
+.stepper span{grid-column:1/4;color:#6d543f;font-size:36px}
+.stepper b{font-size:54px;min-width:50px;text-align:center}
+.stepper button{width:84px;height:84px;border-radius:50%;border:0;background:var(--cream-2);font-size:50px;font-weight:700;color:var(--brown-deep);cursor:pointer;line-height:1}
+.card .nm{overflow:hidden;text-overflow:ellipsis}
+.sprite.sel{filter:drop-shadow(0 0 7px rgba(255,190,70,.95))}
+.sprite.view{cursor:pointer}
+.scrim{position:absolute;inset:0;background:rgba(25,18,10,.5);animation:fade .18s;z-index:2000}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--cream);border-radius:70px 70px 0 0;padding:56px 60px 70px;animation:rise .24s ease-out;z-index:31;display:flex;flex-direction:column;gap:30px;max-height:1800px;overflow:hidden}
+@keyframes rise{from{transform:translateY(120px);opacity:.3}to{transform:none;opacity:1}}
+.sheet.modal{z-index:2001}
+.sheet h3{margin:0;font-size:62px;font-weight:700;line-height:1.3}
+.sheet p{margin:0;color:#6d543f}
+.x{position:absolute;right:44px;top:44px;width:100px;height:100px;border:0;background:var(--cream-2);border-radius:50%;cursor:pointer;color:var(--brown-deep);display:grid;place-items:center;z-index:2}
+.x svg{width:50px;height:50px}
+.field{display:block;width:100%;font:inherit;font-size:44px;padding:30px 36px;border-radius:32px;border:4px solid #d8bf97;background:#fffaf0;color:var(--brown-deep)}
+.field:focus{outline:none;border-color:var(--orange)}
+.tabs{display:flex;gap:18px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;height:96px;padding:0 42px;border-radius:999px;border:0;background:#7b6a50;color:#f6ecd8;font-size:44px;font-weight:700;cursor:pointer;white-space:nowrap}
+.tab.on{background:var(--cream);color:var(--brown-deep);box-shadow:inset 0 0 0 4px var(--brown)}
+.sheet .tab{background:var(--cream-2);color:var(--brown-deep)}
+.sheet .tab.on{background:var(--orange);color:#fff;box-shadow:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;gap:30px;overflow-y:auto;flex:1;min-height:0;align-content:start;padding:4px 4px 12px}
+.card{position:relative;background:var(--cream);border:4px solid var(--brown);border-radius:44px;padding:20px 26px 24px;cursor:pointer;text-align:left;color:var(--brown-deep);box-shadow:0 6px 0 rgba(74,44,26,.4);font:inherit;display:flex;flex-direction:column;gap:10px}
+.card .pic{height:var(--pic,290px);display:grid;place-items:center}
+.card .pic img{max-width:100%;max-height:var(--pic,290px);display:block}
+.card .row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:700;font-size:44px;white-space:nowrap}
+.card.sel{border-color:var(--orange);box-shadow:0 0 0 5px var(--orange)}
+.card .own{font-size:36px;color:#7d6248;font-weight:500}
+.empty{grid-column:1/3;text-align:center;padding:90px 40px;color:#6d543f;display:flex;flex-direction:column;align-items:center;gap:36px}
+.toast{position:absolute;left:50%;top:280px;transform:translateX(-50%);background:rgba(45,28,15,.94);color:#fdf1da;padding:28px 50px;border-radius:999px;font-size:42px;font-weight:500;z-index:3000;width:max-content;max-width:980px;text-align:center;animation:fade .18s}
+.flash{position:absolute;inset:0;background:#fff;z-index:40;animation:flash .45s ease-out forwards;pointer-events:none}
+@keyframes flash{from{opacity:.95}to{opacity:0}}
+.beam{position:absolute;left:60px;width:1005px;height:70px;top:560px;z-index:5;pointer-events:none;background:linear-gradient(transparent,rgba(120,170,255,.25) 35%,rgba(235,245,255,.95) 50%,rgba(120,170,255,.25) 65%,transparent);animation:sweep 1.5s ease-in-out forwards}
+@keyframes sweep{from{top:540px}to{top:1500px}}
+.wave{display:flex;align-items:center;justify-content:center;gap:12px;height:160px}
+.wave i{display:block;width:16px;background:var(--orange);border-radius:4px;height:var(--h)}
+.wave.play i{animation:bar 1s ease-in-out infinite alternate;animation-delay:var(--d)}
+@keyframes bar{to{transform:scaleY(.35)}}
+.pm{width:170px;height:170px;border-radius:50%;border:0;background:var(--brown);color:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 7px 0 #3e2414;flex:none}
+.pm svg{width:80px;height:80px}
+.pm.rec{background:#c9472f;box-shadow:0 7px 0 #8d2f1e}
+.player{display:flex;flex-direction:column;align-items:center;gap:18px}
+.clock{font-size:64px;font-weight:700;font-variant-numeric:tabular-nums}
+.video{position:relative;border-radius:36px;overflow:hidden;background:#18140e;height:640px}
+.video img{width:100%;height:100%;object-fit:cover;display:block}
+.video.play img{animation:zoom 14s linear forwards}
+@keyframes zoom{to{transform:scale(1.2)}}
+.video .pm{position:absolute;left:50%;top:50%;margin:-85px 0 0 -85px;background:rgba(40,25,14,.75);box-shadow:none}
+.video .prog{position:absolute;left:0;right:0;bottom:0;height:16px;background:rgba(255,255,255,.3)}
+.video .prog b{display:block;height:100%;width:0;background:var(--orange)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:16px}
+.seg button{border:4px solid var(--brown);background:var(--cream);color:var(--brown-deep);border-radius:36px;padding:18px 8px;font-size:42px;font-weight:700;cursor:pointer;line-height:1.3}
+.seg button small{display:flex;gap:8px;align-items:center;justify-content:center;font-size:32px;font-weight:500}
+.seg button.on{background:var(--brown);color:#fff}
+.tag{display:inline-block;background:var(--cream);color:var(--brown-deep);border:3px solid var(--brown);border-radius:999px;padding:6px 30px;font-size:38px;font-weight:700;white-space:nowrap}
+.mark{position:absolute;width:120px;height:120px;background:none;border:0;cursor:pointer;display:grid;place-items:center;padding:0}
+.mark i{display:block;width:52px;height:52px;border-radius:50%;background:#ffb42e;border:7px solid #fff;outline:4px solid #6b4128;box-shadow:0 0 0 0 rgba(255,215,106,.7);animation:pulse 1.6s infinite}
+.mark.done i{background:#8bc34a;animation:none}
+@keyframes pulse{to{box-shadow:0 0 0 40px rgba(255,215,106,0)}}
+.night{position:absolute;inset:0;background:radial-gradient(circle at 18% 12%,#fff 0 3px,transparent 4px),radial-gradient(circle at 74% 9%,#fff 0 2px,transparent 3px),radial-gradient(circle at 88% 26%,#ffe9a8 0 3px,transparent 4px),radial-gradient(circle at 34% 24%,#fff 0 2px,transparent 3px),radial-gradient(circle at 8% 38%,#ffe9a8 0 2px,transparent 3px),linear-gradient(#141a2c 0,#1d2438 38%,#5b6141 78%,#8a8c5c 100%)}
+.hint{position:absolute;left:60px;right:60px;bottom:90px;text-align:center;color:#fff;font-weight:500;text-shadow:0 2px 0 rgba(40,25,14,.6)}
+.vlist{position:absolute;left:60px;right:60px;top:290px;display:flex;flex-direction:column;gap:44px}
+.vcard{display:flex;align-items:center;gap:30px;background:var(--cream);border:4px solid var(--brown);border-radius:50px;padding:26px 40px 26px 26px;box-shadow:0 7px 0 rgba(74,44,26,.45);cursor:pointer;font:inherit;text-align:left;color:var(--brown-deep);width:100%}
+.vcard img{width:340px;height:300px;object-fit:contain;flex:none}
+.vcard b{display:block;font-size:56px;line-height:1.3}
+.vcard span{display:block;font-size:40px;color:#6d543f}
+.vcard svg{width:60px;height:60px;flex:none;margin-left:auto}
+.nrow{display:flex;gap:26px;align-items:center;padding:28px 0;border:0;border-bottom:3px solid #e6d5b6;background:none;font:inherit;color:inherit;width:100%;text-align:left;cursor:pointer}
+.nrow b{display:block;font-weight:700}
+.nrow span{display:block;font-size:36px;color:#7d6248}
+.demo{font-size:34px;color:#8a6f53}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01s!important;animation-iteration-count:1!important}}
+</style>
+
+<div id="app">
+  <aside id="rail" aria-label="流程导览">
+    <h1>MEMORy 线上体验</h1>
+    <p class="sub">依 PPT 第四章的界面与流程制作。可以直接点手机画面，也可以从这里跳到任一步。</p>
+    <div id="steps"></div>
+    <div class="tool">
+      <button id="toggleHot" type="button" aria-pressed="false">显示可点区域</button>
+      <button id="restart" type="button">重新开始</button>
+    </div>
+  </aside>
+  <main id="phone"><div id="stage"></div></main>
+</div>
+
+<script>
+(function () {
+  var W = 1125, H = 2000, k = 1;
+  var stage = document.getElementById('stage'), phone = document.getElementById('phone');
+  var ICON = {
+    back: '<path d="M10 7 4 13l6 6M4 13h11a5 5 0 0 1 0 10h-2" transform="translate(0 -2)"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
+    sofa: '<path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v5H3zM6 18v2M18 18v2"/>',
+    layers: '<path d="M12 3 3 8l9 5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+    play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>',
+    pause: '<path d="M8 5v14M16 5v14" stroke-width="3.4"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    stop: '<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>',
+    arrow: '<path d="M9 5l7 7-7 7"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'
+  };
+  function svg(name) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>'; }
+
+  /* f = cells along the two floor axes, h = height in cells, small = can stand on a surface */
+  var ITEMS = {
+    lamp: { n: '暖黄台灯', p: 120, img: 'assets/lamp.png', px: 92, f: [1, 1], h: 2, small: true },
+    chair: { n: '米色扶手椅', p: 200, img: 'assets/chair.png', px: 208, f: [2, 2], h: 2, foot: 8 },
+    hourglass: { n: '玻璃沙漏', p: 80, img: 'assets/hourglass.png', px: 54, f: [1, 1], h: 1, small: true },
+    radio: { n: '老式收音机', p: 150, img: 'assets/radio.png', px: 138, f: [2, 1], h: 1, small: true },
+    photos: { n: '照片墙装饰', p: 250, img: 'assets/photos.png', px: 186, f: [2, 2], h: 1 },
+    tv: { n: '老电视', p: 300, img: 'assets/f_tv.png', px: 189, f: [2, 2], h: 2, foot: 8, story: 'tv' },
+    shelf: { n: '书架', p: 400, img: 'assets/f_shelf.png', px: 217, f: [1, 3], h: 4, foot: 6, story: 'letter' },
+    desk: { n: '书桌', p: 450, img: 'assets/f_desk.png', px: 343, f: [5, 2], h: 2, surface: 96, foot: 8, story: 'album' },
+    table: { n: '小圆桌', p: 120, img: 'assets/f_table.png', px: 103, f: [1, 1], h: 1, foot: 6 },
+    film: { n: '胶卷', p: 40, img: 'assets/f_film.png', px: 58, f: [1, 1], h: 1, small: true },
+    floor: { n: '散落的照片', p: 60, img: 'assets/f_floor.png', px: 220, f: [3, 2], h: 0 },
+    corner: { n: '新角落', p: 500, img: 'assets/corner.png', slot: true }
+  };
+  var TABS = { '收纳': 'stored', '家具': ['lamp', 'chair', 'hourglass', 'radio', 'photos', 'corner', 'tv', 'shelf', 'desk', 'table'], '空间': ['corner'], '装饰': ['photos', 'hourglass', 'floor', 'film'], '回忆物件': 'scans', '植物': [] };
+  var START = [
+    { id: 'shelf', gx: 0, gy: 0 }, { id: 'desk', gx: 3, gy: 0 }, { id: 'tv', gx: 0, gy: 5 }, { id: 'chair', gx: 3, gy: 3 },
+    { id: 'table', gx: 6, gy: 3 }, { id: 'hourglass', gx: 2, gy: 4 }, { id: 'film', gx: 3, gy: 6 }, { id: 'floor', gx: 4, gy: 6 },
+    { id: 'lamp', gx: 3, gy: 0, on: 'desk' }
+  ];
+  var GRID = { n: 8, bx: 568, by: 1111, ax: 50.875, ay: 26.375, cx: -51, cy: 27.875 };
+  function iso(u, v) { return [GRID.bx + u * GRID.ax + v * GRID.cx, GRID.by + u * GRID.ay + v * GRID.cy]; }
+  function unIso(x, y) {
+    var dx = x - GRID.bx, dy = y - GRID.by, det = GRID.ax * GRID.cy - GRID.cx * GRID.ay;
+    return [(dx * GRID.cy - dy * GRID.cx) / det, (GRID.ax * dy - GRID.ay * dx) / det];
+  }
+  function dims(p) { var f = ITEMS[p.id].f; return p.flip ? [f[1], f[0]] : [f[0], f[1]]; }
+  function startLayout() {
+    var uid = 1, placed = START.map(function (o) { return { uid: uid++, id: o.id, gx: o.gx, gy: o.gy, flip: false, on: o.on || null }; });
+    placed.forEach(function (p) { if (p.on) p.on = placed.filter(function (q) { return q.id === p.on; })[0].uid; });
+    return placed;
+  }
+  var THEMES = { beach: { n: '夏日海边', img: 'assets/isl_beach.png' }, house: { n: '老屋客厅', img: 'assets/isl_house.png' } };
+  var COST = { voice: 60, video: 120 };
+
+  var OWN = {
+    album: { t: '毕业旅行相册', who: '我・本人讲述', img: 'assets/st_album.jpg', modes: ['read', 'listen'], dur: 72, text: '毕业那年夏天，我们坐了一夜的火车去看海。相册里最后一张是日落，当时谁都没有说话。' },
+    tv: { t: '家里第一台电视', who: '我・本人持有', img: 'assets/st_tv.jpg', modes: ['read', 'watch'], dur: 48, text: '小时候全家围着它看晚会，信号不好时爸爸就爬上屋顶调天线，我在楼下喊“好了好了”。' },
+    wall: { t: '照片墙', who: '我・本人持有', img: 'assets/st_wall.jpg', modes: ['read'], text: '每搬一次家，就把这些照片重新贴一次。贴上去之后，新房间才开始像自己的房间。' },
+    letter: { t: '没有寄出的信', who: '我・本人讲述', img: 'assets/st_letter.jpg', modes: ['read', 'listen'], dur: 56, text: '封口已经贴好了，地址也写了，最后还是放回了抽屉。现在读起来，有点想念写信时的自己。' }
+  };
+  var VISITS = {
+    wanlan: {
+      owner: '王岚', room: '王岚的收藏室', tag: '家族传承者', img: 'assets/isl_room.png', full: 'assets/room.jpg',
+      marks: [
+        { x: 760, y: 1125, s: { t: '外婆的相册', who: '王岚・本人讲述', img: 'assets/st_album.jpg', modes: ['read', 'listen'], dur: 84, text: '外婆走后，我把她的相册带回了苏州。她在每张照片背后都写了日期，字一年比一年抖。' } },
+        { x: 295, y: 1240, s: { t: '老电视里的春晚', who: '王岚・本人讲述', img: 'assets/st_tv.jpg', modes: ['read', 'watch'], dur: 40, text: '这台电视是爸爸用三个月工资换的。那年除夕，整栋楼的邻居都挤到我们家来看。' } },
+        { x: 310, y: 1000, s: { t: '给学生看的照片墙', who: '王岚・本人持有', img: 'assets/st_wall.jpg', modes: ['read'], text: '当老师的第一年，学生问我小时候长什么样，我就开始把旧照片一张张贴起来。' } }
+      ]
+    },
+    suwan: {
+      owner: '苏晚', room: '苏晚的老屋客厅', tag: '情感叙事者', img: 'assets/isl_house.png', scale: 2.1, left: 48, top: 620,
+      marks: [
+        { x: 124, y: 208, s: { t: '老屋的电视柜', who: '苏晚・本人讲述', img: 'assets/st_tv.jpg', modes: ['read', 'watch'], dur: 36, text: '成都老屋拆迁前，我把客厅拍了一遍。电视还开着，播的是我小时候常看的那个频道。' } },
+        { x: 328, y: 167, s: { t: '全家福', who: '苏晚・他人提供', img: 'assets/st_family.jpg', modes: ['read', 'listen'], dur: 58, text: '这张是表姐寄来的。拍照那天我发烧了，所以照片里的我一脸不高兴，妈妈却笑得最开心。' } },
+        { x: 356, y: 285, s: { t: '冬天的炉子', who: '苏晚・本人讲述', img: 'assets/isl_house.png', modes: ['read'], text: '其实老屋没有壁炉，只有一只铁炉子。我把它画成这样，是因为记忆里那个冬天就这么暖。' } }
+      ]
+    },
+    xiaoyu: {
+      owner: '林小雨', room: '林小雨的夏日海边', tag: '相册囤积者', img: 'assets/isl_beach.png', scale: 2.15, left: 50, top: 640,
+      marks: [
+        { x: 318, y: 174, s: { t: '手机里的第一万张', who: '林小雨・本人持有', img: 'assets/polaroid_big.jpg', modes: ['read', 'watch'], dur: 30, text: '相册里上万张照片，我只把这一张洗了出来。那天和室友逃课去看海，回去都被点了名。' } },
+        { x: 229, y: 133, s: { t: '租来的遮阳伞', who: '林小雨・本人讲述', img: 'assets/isl_beach.png', modes: ['read', 'listen'], dur: 26, text: '二十块钱租了一下午。风太大，我们轮流抱着伞杆，一直笑到肚子疼。' } },
+        { x: 164, y: 212, s: { t: '带回杭州的贝壳', who: '林小雨・本人持有', img: 'assets/isl_beach.png', modes: ['read'], text: '现在放在宿舍桌上。每次换手机都怕照片丢，这个贝壳倒是一直都在。' } }
+      ]
+    }
+  };
+
+  function fresh() {
+    var owned = {}, placed = startLayout();
+    placed.forEach(function (p) { owned[p.id] = (owned[p.id] || 0) + 1; });
+    return { screen: 'start', params: {}, coins: 1280, owned: owned, placed: placed, saved: JSON.parse(JSON.stringify(placed)), undo: [], scans: [], slots: 0, rooms: [], sel: null, tab: '家具', pick: 'lamp', uid: 100, dirty: false, justSaved: false, seen: {}, sheetDown: false, cap: null };
+  }
+  var S = fresh();
+  var timers = [], toastT = 0;
+  function stopTimers() { timers.forEach(clearInterval); timers = []; }
+
+  function el(tag, attrs) {
+    var e = document.createElement(tag);
+    for (var a in (attrs || {})) {
+      var v = attrs[a];
+      if (a === 'class') e.className = v;
+      else if (a === 'html') e.innerHTML = v;
+      else if (a === 'text') e.textContent = v;
+      else if (a === 'style') e.style.cssText = v;
+      else if (a.slice(0, 2) === 'on') e.addEventListener(a.slice(2), v);
+      else e.setAttribute(a, v);
+    }
+    for (var i = 2; i < arguments.length; i++) if (arguments[i]) e.appendChild(arguments[i]);
+    return e;
+  }
+  function bg(src) { return el('img', { class: 'bg', src: src, alt: '', draggable: 'false' }); }
+  function hot(l, t, r, b, label, fn) {
+    return el('button', { class: 'hot', type: 'button', 'aria-label': label, style: 'left:' + l + 'px;top:' + t + 'px;width:' + (r - l) + 'px;height:' + (b - t) + 'px', onclick: fn });
+  }
+  function coin() { return el('span', { class: 'coin', 'aria-hidden': 'true' }); }
+  function coinsEl() { var c = el('span', { class: 'coins', 'aria-label': '金币余额' }, coin()); c.appendChild(el('span', { 'data-coins': '1', text: S.coins.toLocaleString('en-US') })); return c; }
+  function syncCoins() { stage.querySelectorAll('[data-coins]').forEach(function (n) { n.textContent = S.coins.toLocaleString('en-US'); }); }
+  function toast(msg) {
+    var old = stage.querySelector('.toast'); if (old) old.remove();
+    var t = el('div', { class: 'toast', role: 'status', text: msg }); stage.appendChild(t);
+    clearTimeout(toastT); toastT = setTimeout(function () { t.remove(); }, 2200);
+  }
+  function closeSheet() { stopTimers(); stage.querySelectorAll('.scrim,.sheet.modal').forEach(function (n) { n.remove(); }); }
+  function openSheet(node) {
+    closeSheet();
+    stage.appendChild(el('div', { class: 'scrim', onclick: closeSheet }));
+    node.classList.add('modal');
+    node.appendChild(el('button', { class: 'x', type: 'button', 'aria-label': '关闭', html: svg('x'), onclick: closeSheet }));
+    stage.appendChild(node);
+  }
+  function go(screen, params) {
+    stopTimers(); stopCamera();
+    S.screen = screen; S.params = params || {};
+    stage.innerHTML = '';
+    var page = el('div', { class: 'page' });
+    SCREENS[screen](page);
+    stage.appendChild(page);
+    markRail();
+  }
+  function header(page, title, onBack, extra) {
+    page.appendChild(el('div', { class: 'bar', text: title }));
+    page.appendChild(el('button', { class: 'back', type: 'button', 'aria-label': '返回', html: svg('back'), onclick: onBack }));
+    if (extra) { extra.style.cssText = 'position:absolute;right:56px;top:150px;color:#fff;font-size:50px;text-shadow:0 2px 0 rgba(74,44,26,.5)'; page.appendChild(extra); }
+  }
+  function bell() {
+    var rows = [
+      { b: '苏晚邀请你参观“老屋客厅”', s: '10 分钟前', f: function () { go('visit', { id: 'suwan' }); } },
+      { b: '林小雨更新了“夏日海边”', s: '今天', f: function () { go('visit', { id: 'xiaoyu' }); } },
+      { b: '你还可以再扫描一件老物件', s: '昨天', f: function () { go('scan'); } }
+    ];
+    var box = el('div', { class: 'sheet' }, el('h3', { text: '通知' }));
+    rows.forEach(function (r) {
+      var row = el('button', { class: 'nrow', type: 'button', html: '<div><b>' + r.b + '</b><span>' + r.s + '</span></div>', onclick: function () { closeSheet(); r.f(); } });
+      box.appendChild(row);
+    });
+    openSheet(box);
+  }
+
+  /* ---------- story viewer: read, listen, watch ---------- */
+  var MODE = { read: '阅读', listen: '收听', watch: '观看' };
+  function fmt(s) { return ('0' + Math.floor(s / 60)).slice(-2) + ':' + ('0' + (s % 60)).slice(-2); }
+  function waveEl(n) {
+    var w = el('div', { class: 'wave' });
+    for (var i = 0; i < n; i++) w.appendChild(el('i', { style: '--h:' + (34 + Math.abs(Math.sin(i * 1.7)) * 120) + 'px;--d:' + (i * 0.07) + 's' }));
+    return w;
+  }
+  function storySheet(st, onSeen) {
+    if (onSeen) onSeen();
+    var body = el('div', { style: 'min-height:560px' });
+    var box = el('div', { class: 'sheet', style: 'height:1620px' });
+    box.appendChild(el('h3', { text: st.t, style: 'padding-right:110px' }));
+    box.appendChild(el('p', { text: st.who }));
+    var tabs = el('div', { class: 'tabs' });
+    function show(m) {
+      stopTimers();
+      tabs.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.m === m); });
+      body.innerHTML = '';
+      if (m === 'read') {
+        body.appendChild(el('div', { class: 'video', style: 'height:520px;background:#efe0c3' }, el('img', { src: st.img, alt: st.t, style: 'object-fit:contain' })));
+        body.appendChild(el('p', { text: st.text, style: 'margin-top:36px;font-size:48px;line-height:1.65;color:#4a2c1a' }));
+      } else if (m === 'listen') {
+        var t = 0, total = st.dur || 60, clock = el('div', { class: 'clock', text: fmt(0) + ' / ' + fmt(total) }), w = waveEl(30);
+        var pm = el('button', { class: 'pm', type: 'button', 'aria-label': '播放讲述', html: svg('play') });
+        pm.addEventListener('click', function () {
+          if (w.classList.contains('play')) { stopTimers(); w.classList.remove('play'); pm.innerHTML = svg('play'); return; }
+          w.classList.add('play'); pm.innerHTML = svg('pause');
+          timers.push(setInterval(function () { t = Math.min(total, t + 1); clock.textContent = fmt(t) + ' / ' + fmt(total); if (t >= total) { stopTimers(); w.classList.remove('play'); pm.innerHTML = svg('play'); } }, 1000));
+        });
+        body.appendChild(el('div', { class: 'player' }, w, clock, pm, el('p', { class: 'demo', text: '示意：这里会播放本人的讲述录音' })));
+      } else {
+        var bar = el('b'), vid = el('div', { class: 'video' }, el('img', { src: st.img, alt: st.t }));
+        var pv = el('button', { class: 'pm', type: 'button', 'aria-label': '播放影片', html: svg('play') });
+        var p = 0;
+        pv.addEventListener('click', function () {
+          vid.classList.add('play'); pv.hidden = true;
+          timers.push(setInterval(function () { p = Math.min(100, p + 1.2); bar.style.width = p + '%'; if (p >= 100) { stopTimers(); vid.classList.remove('play'); pv.hidden = false; p = 0; } }, 120));
+        });
+        vid.appendChild(pv); vid.appendChild(el('div', { class: 'prog' }, bar));
+        body.appendChild(vid);
+        body.appendChild(el('p', { class: 'demo', text: '示意：这里会播放本人上传的影片', style: 'margin-top:24px' }));
+      }
+    }
+    st.modes.forEach(function (m) { tabs.appendChild(el('button', { class: 'tab', type: 'button', 'data-m': m, text: MODE[m], onclick: function () { show(m); } })); });
+    box.appendChild(tabs); box.appendChild(body);
+    openSheet(box);
+    show(st.modes[0]);
+  }
+
+  /* ---------- the room: footprints, stacking and drag placement ---------- */
+  function byUid(uid) { return S.placed.filter(function (q) { return q.uid === uid; })[0]; }
+  function kids(p) { return S.placed.filter(function (q) { return q.on === p.uid; }); }
+  function overlap(a, b, A, B) { return a.gx < b.gx + B[0] && b.gx < a.gx + A[0] && a.gy < b.gy + B[1] && b.gy < a.gy + A[1]; }
+  /* Can item p stand at (gx, gy)? Returns {ok, on, why}. Small items may stand on a surface. */
+  function fits(p, gx, gy, flip) {
+    var d = ITEMS[p.id], D = flip ? [d.f[1], d.f[0]] : d.f, spot = { gx: gx, gy: gy };
+    if (gx < 0 || gy < 0 || gx + D[0] > GRID.n || gy + D[1] > GRID.n) return { ok: false, why: '超出房间范围' };
+    var hit = null, list = S.placed.filter(function (q) { return q.uid !== p.uid && q.on !== p.uid; });
+    for (var i = 0; i < list.length; i++) {
+      var q = list[i], Q = dims(q);
+      if (q.on) continue;
+      if (overlap(spot, q, D, Q)) { hit = q; break; }
+    }
+    if (!hit) return { ok: true, on: null };
+    var top = ITEMS[hit.id], H = dims(hit);
+    if (d.small && top.surface && gx >= hit.gx && gy >= hit.gy && gx + D[0] <= hit.gx + H[0] && gy + D[1] <= hit.gy + H[1]) {
+      var taken = list.filter(function (q) { return q.on === hit.uid && overlap(spot, q, D, dims(q)); })[0];
+      if (taken) return { ok: false, why: top.n + '上这里已有' + ITEMS[taken.id].n };
+      return { ok: true, on: hit.uid };
+    }
+    return { ok: false, why: '和' + top.n + '重叠了' };
+  }
+  function findSpot(p) {
+    for (var sum = 8; sum <= 22; sum++) for (var gx = 0; gx < GRID.n; gx++) {
+      var gy = sum - gx;
+      if (gy < 0 || gy >= GRID.n) continue;
+      var r = fits(p, gx, gy, p.flip);
+      if (r.ok && !r.on) return [gx, gy];
+    }
+    return null;
+  }
+  function lift(p) { var par = p.on && byUid(p.on); return par ? ITEMS[par.id].surface : 0; }
+  function spritePos(p, dy, gx, gy, on) {
+    var d = ITEMS[p.id], D = dims(p), L = iso(gx, gy + D[1]), R = iso(gx + D[0], gy), F = iso(gx + D[0], gy + D[1]);
+    return { left: (L[0] + R[0]) / 2 - d.px / 2, bottom: F[1] + dy + (d.foot || 0) - on };
+  }
+  function drawOrder() {
+    var list = S.placed.slice().sort(function (a, b) { return a.gx + a.gy - b.gx - b.gy; });
+    function behind(a, b) { var A = dims(a), B = dims(b); return a.gx + A[0] <= b.gx || a.gy + A[1] <= b.gy; }
+    for (var pass = 0; pass < list.length; pass++) for (var i = 0; i < list.length; i++) for (var j = i + 1; j < list.length; j++) {
+      if (behind(list[j], list[i]) && !behind(list[i], list[j])) { var t = list[i]; list[i] = list[j]; list[j] = t; }
+    }
+    var out = [];
+    list.filter(function (p) { return !p.on; }).forEach(function (p) { out.push(p); kids(p).forEach(function (c) { out.push(c); }); });
+    return out;
+  }
+  function placeSprite(img, p, dy) {
+    var pos = spritePos(p, dy, p.gx, p.gy, lift(p)), d = ITEMS[p.id];
+    img.style.left = pos.left + 'px';
+    img.style.top = 'auto';
+    img.style.bottom = (2000 - pos.bottom) + 'px';
+    img.style.width = d.px + 'px';
+    img.style.transform = p.flip ? 'scaleX(-1)' : 'none';
+  }
+  function floorPoly(gx, gy, w, d, dy, raise) {
+    return [iso(gx, gy), iso(gx + w, gy), iso(gx + w, gy + d), iso(gx, gy + d)].map(function (c) { return c[0] + ',' + (c[1] + dy - raise); }).join(' ');
+  }
+  function gridSvg(dy) {
+    var lines = '';
+    for (var i = 0; i <= GRID.n; i++) {
+      var a = iso(i, 0), b = iso(i, GRID.n), c = iso(0, i), e = iso(GRID.n, i);
+      lines += '<line x1="' + a[0] + '" y1="' + (a[1] + dy) + '" x2="' + b[0] + '" y2="' + (b[1] + dy) + '"/><line x1="' + c[0] + '" y1="' + (c[1] + dy) + '" x2="' + e[0] + '" y2="' + (e[1] + dy) + '"/>';
+    }
+    return '<svg class="gridsvg" viewBox="0 0 1125 2000" aria-hidden="true"><g class="gridlines">' + lines + '</g><polygon class="foot" points="0,0"/></svg>';
+  }
+  function showFoot(svgEl, p, gx, gy, ok, dy, raise) {
+    var poly = svgEl.querySelector('.foot'), D = dims(p);
+    poly.setAttribute('points', floorPoly(gx, gy, D[0], D[1], dy, raise));
+    poly.setAttribute('class', 'foot ' + (ok ? 'good' : 'bad'));
+  }
+  function hideFoot(svgEl) { svgEl.querySelector('.foot').setAttribute('points', '0,0'); }
+  function drawRoom(layer, dy, editable, ui) {
+    layer.innerHTML = '';
+    var grid = null;
+    if (editable) { layer.insertAdjacentHTML('beforeend', gridSvg(dy)); grid = layer.lastChild; }
+    drawOrder().forEach(function (p, idx) {
+      var d = ITEMS[p.id], img = el('img', { class: 'sprite' + (editable ? '' : ' view'), src: d.img, alt: d.n, draggable: 'false', 'data-uid': p.uid });
+      placeSprite(img, p, dy);
+      img.style.zIndex = 5 + idx;
+      if (editable) {
+        if (S.sel === p.uid) { img.classList.add('sel'); showFoot(grid, p, p.gx, p.gy, true, dy, lift(p)); }
+        img.addEventListener('pointerdown', function (e) { startDrag(e, img, p, layer, dy, grid, ui); });
+      } else {
+        img.addEventListener('click', function () { var st = d.story && (OWN[d.story] || d.story); if (st) storySheet(st); else toast(d.n + '：还没有添加故事'); });
+      }
+      layer.appendChild(img);
+    });
+  }
+  function startDrag(e, img, p, layer, dy, grid, ui) {
+    e.preventDefault(); img.setPointerCapture(e.pointerId);
+    S.sel = p.uid; ui();
+    layer.querySelectorAll('.sprite').forEach(function (n) { n.classList.remove('sel'); }); img.classList.add('sel');
+    var rect = stage.getBoundingClientRect();
+    function toCell(ev) { return unIso((ev.clientX - rect.left) / k, (ev.clientY - rect.top) / k - dy); }
+    var start = toCell(e), ox = p.gx, oy = p.gy, baseLift = lift(p), moved = false, cur = { gx: ox, gy: oy, ok: true, on: p.on, why: '' };
+    showFoot(grid, p, ox, oy, true, dy, baseLift);
+    function mv(ev) {
+      var c = toCell(ev), D = dims(p);
+      var gx = Math.max(0, Math.min(GRID.n - D[0], Math.round(ox + c[0] - start[0])));
+      var gy = Math.max(0, Math.min(GRID.n - D[1], Math.round(oy + c[1] - start[1])));
+      if (!moved && (gx !== ox || gy !== oy)) { moved = true; img.style.zIndex = 900; img.classList.add('lifted'); }
+      if (!moved) return;
+      var r = fits(p, gx, gy, p.flip), raise = r.on ? ITEMS[byUid(r.on).id].surface : 0;
+      cur = { gx: gx, gy: gy, ok: r.ok, on: r.on, why: r.why };
+      var pos = spritePos(p, dy, gx, gy, raise);
+      img.style.left = pos.left + 'px'; img.style.bottom = (2000 - pos.bottom) + 'px';
+      showFoot(grid, p, gx, gy, r.ok, dy, raise);
+    }
+    function up() {
+      img.removeEventListener('pointermove', mv); img.removeEventListener('pointerup', up); img.removeEventListener('pointercancel', up);
+      if (moved) {
+        if (cur.ok) {
+          snapshot();
+          var dx = cur.gx - p.gx, dyy = cur.gy - p.gy;
+          kids(p).forEach(function (c) { c.gx += dx; c.gy += dyy; });
+          p.gx = cur.gx; p.gy = cur.gy; p.on = cur.on || null; S.dirty = true; S.justSaved = false;
+        } else {
+          toast('放不下：' + cur.why);
+        }
+      }
+      drawRoom(layer, dy, true, ui); ui();
+    }
+    img.addEventListener('pointermove', mv); img.addEventListener('pointerup', up); img.addEventListener('pointercancel', up);
+  }
+  function snapshot() { S.undo.push(JSON.stringify(S.placed)); if (S.undo.length > 30) S.undo.shift(); }
+  function avail(id) { return (S.owned[id] || 0) - S.placed.filter(function (p) { return p.id === id; }).length; }
+  function placeNew(id, quiet) {
+    var p = { uid: S.uid++, id: id, gx: 0, gy: 0, flip: false, on: null }, spot = findSpot(p);
+    if (!spot) { if (!quiet) toast('房间放不下了，先收起一些家具'); return false; }
+    snapshot(); p.gx = spot[0]; p.gy = spot[1]; S.placed.push(p); S.sel = p.uid; S.dirty = true; S.justSaved = false;
+    return true;
+  }
+  function buy(id, after) {
+    var it = ITEMS[id];
+    if (!it.slot && avail(id) > 0) { if (placeNew(id)) after(); return; }
+    if (S.coins < it.p) { toast('金币不够，还差 ' + (it.p - S.coins)); return; }
+    if (it.slot) { S.coins -= it.p; S.slots++; toast('新角落已解锁，选一个主题吧'); go('map'); return; }
+    if (!findSpot({ uid: -1, id: id, flip: false })) { toast('房间放不下了，先收起一些家具'); return; }
+    S.coins -= it.p; syncCoins(); S.owned[id] = (S.owned[id] || 0) + 1; placeNew(id); after();
+  }
+  function tabIds(t) {
+    var l = TABS[t];
+    if (l === 'scans') return S.scans;
+    if (l === 'stored') return Object.keys(S.owned).filter(function (id) { return avail(id) > 0; });
+    return l;
+  }
+  function footText(d) { return d.slot ? '解锁新空间' : '占地 ' + d.f[0] + '×' + d.f[1] + (d.h ? ' · 高 ' + d.h : ' · 贴地'); }
+  function shopCards(grid, pickMode, rerender) {
+    var list = tabIds(S.tab);
+    if (TABS[S.tab] === 'scans' && !list.length) {
+      grid.appendChild(el('div', { class: 'empty' }, el('div', { text: '还没有老物件。扫描一张旧照片或一张车票，它就会变成这里的物件。' }), el('button', { class: 'btn', type: 'button', text: '去扫描', onclick: function () { go('scan'); } })));
+      return;
+    }
+    if (!list.length) { grid.appendChild(el('div', { class: 'empty', text: TABS[S.tab] === 'stored' ? '收纳是空的。选中房间里的物件再按垃圾桶，它就会收到这里。' : '植物类物件即将上架。' })); return; }
+    list.forEach(function (id) {
+      var it = ITEMS[id];
+      var price = el('span', { class: 'coins' }, coin()); price.appendChild(el('span', { text: it.p }));
+      var left = avail(id);
+      var tagEl = !it.slot && left > 0 ? el('span', { class: 'own', text: '可摆 ' + left }) : it.scan ? el('span', { class: 'own', text: '已摆放' }) : price;
+      var card = el('button', { class: 'card' + (pickMode && S.pick === id ? ' sel' : ''), type: 'button', onclick: function () { S.pick = id; rerender(id); } },
+        el('div', { class: 'pic' }, el('img', { src: it.img, alt: '' })),
+        el('div', { class: 'row' }, el('span', { class: 'nm', text: it.n }), tagEl),
+        el('div', { class: 'own', text: footText(it) }));
+      grid.appendChild(card);
+    });
+  }
+
+  /* ---------- camera ---------- */
+  var cam = { stream: null, facing: 'environment' };
+  function stopCamera() { if (cam.stream) { cam.stream.getTracks().forEach(function (t) { t.stop(); }); cam.stream = null; } }
+  function canCamera() { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+  function openCamera(video, onFail) {
+    if (!canCamera()) { onFail(); return; }
+    stopCamera();
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: cam.facing, width: { ideal: 1280 } }, audio: false }).then(function (stream) {
+      if (S.screen !== 'scan') { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      cam.stream = stream; video.srcObject = stream; video.hidden = false;
+      var pl = video.play(); if (pl && pl.catch) pl.catch(function () {});
+    }).catch(onFail);
+  }
+  function grabSquare(source, sw, sh) {
+    var side = Math.min(sw, sh), size = Math.min(1024, side), c = el('canvas');
+    c.width = c.height = size;
+    c.getContext('2d').drawImage(source, (sw - side) / 2, (sh - side) / 2, side, side, 0, 0, size, size);
+    return c;
+  }
+
+  /* ---------- turning a photo into a game item ---------- */
+  var aiReady = (window.claude && window.claude.use) ? Promise.race([window.claude.use('sample'), new Promise(function (r) { setTimeout(function () { r(null); }, 11000); })]).catch(function () { return null; }) : Promise.resolve(null);
+  /* Without AI: cut the object from its background, flatten the colours and add the game's brown outline. */
+  function localStylize(src) {
+    var S2 = 480, c = el('canvas'); c.width = c.height = S2;
+    var x = c.getContext('2d'); x.filter = 'blur(1.5px) saturate(1.2)'; x.drawImage(src, 0, 0, S2, S2); x.filter = 'none';
+    var im = x.getImageData(0, 0, S2, S2), d = im.data, seen = new Uint8Array(S2 * S2), st = [];
+    for (var i = 0; i < S2; i++) { st.push(i, (S2 - 1) * S2 + i, i * S2, i * S2 + S2 - 1); }
+    st.forEach(function (n) { seen[n] = 1; });
+    var removed = st.length;
+    while (st.length) {
+      var n = st.pop(), nx = n % S2, ny = (n / S2) | 0;
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) {
+        var ax = nx + o[0], ay = ny + o[1]; if (ax < 0 || ay < 0 || ax >= S2 || ay >= S2) return;
+        var m = ay * S2 + ax; if (seen[m]) return;
+        var diff = Math.abs(d[m * 4] - d[n * 4]) + Math.abs(d[m * 4 + 1] - d[n * 4 + 1]) + Math.abs(d[m * 4 + 2] - d[n * 4 + 2]);
+        if (diff < 20) { seen[m] = 1; removed++; st.push(m); }
+      });
+    }
+    var ratio = removed / (S2 * S2), keepAll = ratio < 0.08 || ratio > 0.9, pad = S2 * 0.04;
+    var L = 7, tone = function (v) { return Math.round(Math.round(v / 255 * (L - 1)) / (L - 1) * 255); };
+    for (var p = 0; p < S2 * S2; p++) {
+      var i4 = p * 4, px = p % S2, py = (p / S2) | 0;
+      d[i4] = Math.min(255, tone(d[i4]) * 1.04 + 6); d[i4 + 1] = tone(d[i4 + 1]); d[i4 + 2] = Math.max(0, tone(d[i4 + 2]) * 0.92);
+      var inBox = px > pad && py > pad && px < S2 - pad && py < S2 - pad;
+      d[i4 + 3] = keepAll ? (inBox ? 255 : 0) : (seen[p] ? 0 : 255);
+    }
+    x.putImageData(im, 0, 0);
+    var out = el('canvas'); out.width = out.height = S2 + 28; var o = out.getContext('2d');
+    var tint = el('canvas'); tint.width = tint.height = S2; var tx = tint.getContext('2d');
+    tx.drawImage(c, 0, 0); tx.globalCompositeOperation = 'source-in'; tx.fillStyle = '#4a2c1a'; tx.fillRect(0, 0, S2, S2);
+    for (var a = 0; a < 16; a++) o.drawImage(tint, 14 + Math.cos(a / 16 * 6.283) * 7, 14 + Math.sin(a / 16 * 6.283) * 7);
+    o.drawImage(c, 14, 14);
+    return { sprite: out.toDataURL('image/png'), keepAll: keepAll };
+  }
+  function cleanSvg(text) {
+    var doc = new DOMParser().parseFromString(String(text), 'image/svg+xml'), root = doc.documentElement;
+    if (!root || root.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) throw new Error('bad svg');
+    doc.querySelectorAll('script,foreignObject,image,use,a,style').forEach(function (n) { n.remove(); });
+    doc.querySelectorAll('*').forEach(function (n) { Array.prototype.slice.call(n.attributes).forEach(function (a) { if (/^on/i.test(a.name) || /href/i.test(a.name)) n.removeAttribute(a.name); }); });
+    if (!root.getAttribute('width')) { root.setAttribute('width', '512'); root.setAttribute('height', '512'); }
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(root));
+  }
+  var AI_PROMPT = 'The attached photo shows an old keepsake someone scanned for a cozy isometric room-decorating game. Identify the main object and redraw that same object as one game item.\n\n' +
+    'Art style for the SVG: a warm hand-illustrated cozy game look with soft cream, brown, olive and amber tones. A 3/4 isometric view from above, as if standing on the floor of an isometric room. Dark brown (#4a2c1a) outlines about 5 units thick with rounded joins. Flat fills with two or three shades per surface for volume: a lighter top face, a mid front face, a darker side face. Keep what makes this particular object recognisable: its real shape, colours, proportions and visible details. Simplify small details; no text, no logos, no people, no background, no floor, no shadow.\n\n' +
+    'SVG rules: viewBox="0 0 512 512", transparent background, the object fills most of the canvas and its base touches the bottom. Use only path, rect, circle, ellipse, polygon, line, g and linearGradient. No script, style, image or text elements. Under 12 KB.\n\n' +
+    'Reply with only this JSON: {"name": "the object in Simplified Chinese, at most 8 characters", "footprint": [w, d], "height": h, "small": true or false, "question": "one gentle question in Simplified Chinese that invites the owner to tell the story of this object", "svg": "<svg ...>...</svg>"}.\n' +
+    'footprint and height are whole numbers of floor cells from 1 to 5, where one cell is about 40 cm: a photo or book is [1,1] height 1, a chair [2,2] height 2, a wardrobe [3,1] height 5. small is true if it would naturally stand on a table.';
+  function clampInt(v, lo, hi, dflt) { var n = Math.round(Number(v)); return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : dflt; }
+  function pxFor(f, small) { return Math.round((f[0] + f[1]) * 51 * (small ? 0.72 : 0.96)); }
+
+  /* ---------- screens ---------- */
+  var SCREENS = {
+    start: function (p) {
+      p.appendChild(bg('assets/start.jpg'));
+      function auth(mode) {
+        var box = el('div', { class: 'sheet' }, el('h3', { text: mode }),
+          el('label', { for: 'authPhone', text: '手机号' }), el('input', { id: 'authPhone', class: 'field', inputmode: 'tel', placeholder: '输入手机号' }),
+          el('label', { for: 'authCode', text: '验证码' }), el('input', { id: 'authCode', class: 'field', inputmode: 'numeric', placeholder: '输入验证码' }),
+          el('button', { class: 'btn', type: 'button', text: mode === '注册' ? '注册并继续' : '登录', onclick: function () { closeSheet(); go('enter'); } }),
+          el('p', { class: 'demo', text: '这是 demo，可以不填直接继续，填写的内容不会被保存或发送。' }));
+        openSheet(box);
+      }
+      p.appendChild(hot(125, 1672, 545, 1830, '注册', function () { auth('注册'); }));
+      p.appendChild(hot(580, 1672, 1005, 1830, '登录', function () { auth('登录'); }));
+      p.appendChild(hot(55, 165, 145, 255, '首页', function () { toast('请先注册或登录'); }));
+      p.appendChild(hot(990, 165, 1080, 255, '通知', function () { toast('登录后可以查看通知'); }));
+      p.appendChild(hot(60, 1880, 135, 1950, 'English', function () { toast('demo 目前只有中文版'); }));
+      p.appendChild(hot(170, 1880, 265, 1950, '中文', function () { toast('当前语言：中文'); }));
+      p.appendChild(hot(305, 1880, 365, 1950, '粤语', function () { toast('demo 目前只有中文版'); }));
+    },
+    enter: function (p) {
+      p.appendChild(bg('assets/enter.jpg'));
+      p.appendChild(hot(125, 1672, 1005, 1830, '进入回忆空间', function () { go('room'); }));
+      p.appendChild(hot(55, 165, 145, 255, '首页', function () { toast('你已经在首页了'); }));
+      p.appendChild(hot(990, 165, 1080, 255, '通知', bell));
+      p.appendChild(hot(60, 1880, 135, 1950, 'English', function () { toast('demo 目前只有中文版'); }));
+      p.appendChild(hot(170, 1880, 265, 1950, '中文', function () { toast('当前语言：中文'); }));
+      p.appendChild(hot(305, 1880, 365, 1950, '粤语', function () { toast('demo 目前只有中文版'); }));
+    },
+    room: function (p) {
+      p.appendChild(bg('assets/room_empty.jpg'));
+      p.appendChild(hot(55, 150, 145, 240, '首页', function () { go('enter'); }));
+      p.appendChild(hot(990, 150, 1080, 240, '通知', bell));
+      p.appendChild(hot(185, 860, 440, 1150, '照片墙', function () { storySheet(OWN.wall); }));
+      var layer = el('div', { class: 'roomlayer' });
+      S.placed = JSON.parse(JSON.stringify(S.saved));
+      drawRoom(layer, 0, false);
+      p.appendChild(layer);
+      var dock = el('div', { class: 'dock' });
+      [['scan', '扫描', function () { go('scan'); }], ['sofa', '装扮', function () { S.justSaved = false; S.undo = []; S.dirty = false; S.sel = null; go('decorate'); }], ['layers', '空间', function () { go('stack'); }], ['users', '参观', function () { go('visitList'); }]].forEach(function (d) {
+        dock.appendChild(el('button', { type: 'button', html: svg(d[0]) + '<span>' + d[1] + '</span>', onclick: d[2] }));
+      });
+      p.appendChild(dock);
+    },
+    scan: function (p) {
+      p.appendChild(bg('assets/scan.jpg'));
+      var video = el('video', { class: 'camview', playsinline: '', muted: '', autoplay: '' }); video.muted = true; video.hidden = true;
+      p.appendChild(video);
+      ['tl', 'tr', 'bl', 'br'].forEach(function (c) { p.appendChild(el('i', { class: 'corner-mark ' + c })); });
+      var note = el('div', { class: 'camnote', text: '正在开启镜头…' });
+      p.appendChild(note);
+      var takeInput = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: '', 'aria-label': '拍照' });
+      var pickInput = el('input', { type: 'file', accept: 'image/*', hidden: '', 'aria-label': '选择照片' });
+      function fromFile(e) {
+        var f = e.target.files && e.target.files[0]; if (!f) return;
+        var img = new Image(), url = URL.createObjectURL(f);
+        img.onload = function () { var c = grabSquare(img, img.naturalWidth, img.naturalHeight); URL.revokeObjectURL(url); go('convert', { canvas: c }); };
+        img.onerror = function () { toast('这个文件打不开，换一张照片试试'); };
+        img.src = url;
+      }
+      takeInput.addEventListener('change', fromFile); pickInput.addEventListener('change', fromFile);
+      p.appendChild(takeInput); p.appendChild(pickInput);
+      function noCam() { note.textContent = '这里不能直接开镜头。按快门会调用手机相机，电脑上可选一张照片。'; }
+      openCamera(video, noCam);
+      video.addEventListener('playing', function () { note.textContent = '把老物件放进框内，按下快门'; });
+      p.appendChild(hot(55, 150, 145, 240, '返回', function () { go('room'); }));
+      p.appendChild(hot(995, 150, 1080, 240, '通知', bell));
+      var busy = false;
+      function shoot() {
+        if (busy) return;
+        if (!cam.stream || !video.videoWidth) { takeInput.click(); return; }
+        busy = true;
+        p.appendChild(el('div', { class: 'beam' }));
+        var c = grabSquare(video, video.videoWidth, video.videoHeight);
+        setTimeout(function () {
+          if (S.screen !== 'scan') return;
+          p.appendChild(el('div', { class: 'flash' }));
+          setTimeout(function () { if (S.screen === 'scan') go('convert', { canvas: c }); }, 350);
+        }, 1400);
+      }
+      p.appendChild(hot(445, 1655, 690, 1895, '拍摄扫描', shoot));
+      p.appendChild(hot(85, 1720, 197, 1830, '从相册选择', function () { pickInput.click(); }));
+      p.appendChild(hot(940, 1718, 1050, 1826, '切换镜头', function () {
+        if (!cam.stream) { toast('目前没有开启镜头'); return; }
+        cam.facing = cam.facing === 'environment' ? 'user' : 'environment'; openCamera(video, noCam);
+      }));
+      p.appendChild(el('button', { class: 'tag sample', type: 'button', text: '用示例照片', onclick: function () { useSample(); go('scanResult'); } }));
+    },
+    convert: function (p) {
+      p.style.background = '#4f543e';
+      var c = S.params.canvas, photo = c.toDataURL('image/jpeg', 0.85);
+      var ctl = new AbortController(), live = true, stageNow = S.screen;
+      header(p, 'AI 转换中', function () { live = false; ctl.abort(); go('scan'); });
+      p.appendChild(el('div', { class: 'convbox' }, el('img', { src: photo, alt: '刚拍下的老物件' }), el('div', { class: 'beam loop' })));
+      var line = el('div', { class: 'convtext', text: '正在识别物件…' }), sub = el('div', { class: 'convsub', text: '第一次使用时，可能会先询问是否允许调用 Claude。' });
+      p.appendChild(line); p.appendChild(sub);
+      p.appendChild(el('button', { class: 'btn ghost', type: 'button', text: '不用 AI，直接风格化', style: 'position:absolute;left:210px;right:210px;bottom:90px', onclick: function () { live = false; ctl.abort(); finish(null, 'stopped'); } }));
+      function finish(ai, reason) {
+        var local = localStylize(c);
+        S.cap = ai ? { photo: photo, sprite: ai.sprite, name: ai.name, f: ai.f, h: ai.h, small: ai.small, question: ai.question, source: 'ai' } :
+          { photo: photo, sprite: local.sprite, name: '老物件', f: [1, 1], h: 1, small: true, question: '这件东西是怎么来到你身边的？', source: 'local', reason: reason };
+        go('scanResult');
+      }
+      aiReady.then(function (sample) {
+        if (!live) return;
+        if (!sample) { live = false; finish(null, 'none'); return; }
+        return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.85); }).then(function (blob) {
+          var drew = false;
+          return sample.json(AI_PROMPT, { images: [blob], cache: false, signal: ctl.signal, onText: function () { if (!drew && live) { drew = true; line.textContent = '正在画成游戏风格…'; sub.textContent = '通常要几十秒。'; } } });
+        }).then(function (r) {
+          if (!live) return;
+          live = false;
+          var f = Array.isArray(r.footprint) ? r.footprint : [];
+          var ai = { sprite: cleanSvg(r.svg), name: String(r.name || '老物件').slice(0, 10), f: [clampInt(f[0], 1, 5, 1), clampInt(f[1], 1, 5, 1)], h: clampInt(r.height, 1, 5, 1), small: !!r.small, question: String(r.question || '这件东西是怎么来到你身边的？').slice(0, 60) };
+          var test = new Image();
+          test.onload = function () { finish(ai); };
+          test.onerror = function () { finish(null, 'error'); };
+          test.src = ai.sprite;
+        });
+      }).catch(function (e) {
+        if (!live) return;
+        live = false;
+        finish(null, e && e.code === 'not_granted' ? 'denied' : 'error');
+      });
+    },
+    scanResult: function (p) {
+      var cap = S.cap;
+      p.style.background = '#4f543e';
+      header(p, '转换完成', function () { go('scan'); });
+      var srcText = cap.source === 'ai' ? 'AI 已转换成游戏风格' : cap.source === 'sample' ? '示例物件' :
+        cap.reason === 'denied' ? '未允许使用 AI，已改用本机风格化' : cap.reason === 'stopped' ? '已使用本机风格化' : 'AI 未连接，已改用本机风格化';
+      p.appendChild(el('div', { class: 'tag', text: srcText, style: 'position:absolute;left:50%;top:262px;transform:translateX(-50%)' }));
+      var pair = el('div', { class: 'pair' });
+      pair.appendChild(el('figure', {}, el('img', { src: cap.photo, alt: '原始照片', style: 'object-fit:cover' }), el('figcaption', { text: '原始照片' })));
+      pair.appendChild(el('figure', { class: 'after' }, el('img', { src: cap.sprite, alt: '游戏物件' }), el('figcaption', { text: '游戏物件' })));
+      p.appendChild(pair);
+      var box = el('div', { class: 'sheet', style: 'height:880px;animation:none;gap:24px;z-index:2' });
+      box.appendChild(el('label', { for: 'capName', text: '物件名称' }));
+      box.appendChild(el('input', { id: 'capName', class: 'field', value: cap.name, oninput: function (e) { cap.name = e.target.value; } }));
+      box.appendChild(el('div', { text: '占地体积（一格约 40 厘米）', style: 'margin-top:8px' }));
+      var row = el('div', { class: 'steppers' });
+      [['长', 0], ['宽', 1], ['高', 2]].forEach(function (o) {
+        function val() { return o[1] < 2 ? cap.f[o[1]] : cap.h; }
+        function set(v) { if (o[1] < 2) cap.f[o[1]] = v; else cap.h = v; }
+        var num = el('b', { text: val() });
+        row.appendChild(el('div', { class: 'stepper' }, el('span', { text: o[0] }),
+          el('button', { type: 'button', text: '−', 'aria-label': o[0] + '减一', onclick: function () { set(Math.max(1, val() - 1)); num.textContent = val(); } }), num,
+          el('button', { type: 'button', text: '＋', 'aria-label': o[0] + '加一', onclick: function () { set(Math.min(5, val() + 1)); num.textContent = val(); } })));
+      });
+      box.appendChild(row);
+      var actions = el('div', { style: 'display:grid;grid-template-columns:1fr 2fr;gap:22px;margin-top:auto' });
+      actions.appendChild(el('button', { class: 'btn ghost', type: 'button', text: '重拍', onclick: function () { go('scan'); } }));
+      actions.appendChild(el('button', { class: 'btn', type: 'button', text: '添加物件故事', onclick: function () { go('edit', { fresh: true }); } }));
+      box.appendChild(actions);
+      p.appendChild(box);
+    },
+    edit: function (p) {
+      p.style.background = '#4f543e';
+      if (S.params.fresh) { S.draft = { name: S.cap.name, text: S.cap.source === 'sample' ? '毕业那年夏天，我们在海边等日落。他说以后每年都来，后来只来过这一次。' : '', voice: 0, video: false, mode: 'text' }; S.params.fresh = false; }
+      var d = S.draft, cap = S.cap;
+      header(p, '添加物件故事', function () { go('scanResult'); });
+      p.appendChild(el('img', { src: cap.sprite, alt: cap.name, style: 'position:absolute;left:402px;top:262px;width:320px;height:360px;object-fit:contain' }));
+      var form = el('div', { style: 'position:absolute;left:60px;right:60px;top:660px;display:flex;flex-direction:column;gap:30px' });
+      form.appendChild(el('input', { id: 'objName', class: 'field', value: d.name, 'aria-label': '物件名称', oninput: function (e) { d.name = e.target.value; } }));
+      var seg = el('div', { class: 'seg' }), panel = el('div', { style: 'height:640px;background:var(--cream);border-radius:44px;padding:36px;overflow:hidden' });
+      var cta = el('button', { class: 'btn', type: 'button', style: 'position:absolute;left:125px;right:125px;bottom:70px' });
+      function cost() { return (d.voice ? COST.voice : 0) + (d.video ? COST.video : 0); }
+      function refresh() { var c = cost(); cta.innerHTML = c ? '放进我的空间　<span class="coin"></span>' + c : '放进我的空间'; }
+      function pane() {
+        stopTimers();
+        seg.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.m === d.mode); });
+        panel.innerHTML = '';
+        if (d.mode === 'text') {
+          panel.appendChild(el('textarea', { id: 'objText', class: 'field', 'aria-label': '物件故事', placeholder: cap.question, style: 'height:100%;resize:none;line-height:1.6;border:0;background:none;padding:0', oninput: function (e) { d.text = e.target.value; } }));
+          panel.firstChild.value = d.text;
+        } else if (d.mode === 'voice') {
+          var t = d.voice, clock = el('div', { class: 'clock', text: fmt(t) }), w = waveEl(26);
+          var rec = el('button', { class: 'pm', type: 'button', 'aria-label': '开始或停止录音', html: svg('mic') });
+          rec.addEventListener('click', function () {
+            if (rec.classList.contains('rec')) { stopTimers(); rec.classList.remove('rec'); rec.innerHTML = svg('mic'); w.classList.remove('play'); d.voice = Math.max(1, t); refresh(); toast('录音已加入，保存时扣 ' + COST.voice + ' 金币'); return; }
+            rec.classList.add('rec'); rec.innerHTML = svg('stop'); w.classList.add('play');
+            timers.push(setInterval(function () { t++; clock.textContent = fmt(t); }, 1000));
+          });
+          panel.appendChild(el('div', { class: 'player' }, w, clock, rec, el('p', { class: 'demo', text: '模拟录音，不会使用麦克风' })));
+        } else {
+          var v = el('div', { class: 'video', style: 'height:440px;background:#2c2418;display:grid;place-items:center;color:#f6ecd8' });
+          function paint() {
+            v.innerHTML = '';
+            if (d.video) { v.appendChild(el('img', { src: cap.photo, alt: '已选择的影片' })); v.appendChild(el('button', { class: 'pm', type: 'button', 'aria-label': '移除影片', html: svg('x'), onclick: function () { d.video = false; paint(); refresh(); } })); }
+            else v.appendChild(el('button', { class: 'btn ghost', type: 'button', text: '选择一段影片', onclick: function () { d.video = true; paint(); refresh(); toast('影片已加入，保存时扣 ' + COST.video + ' 金币'); } }));
+          }
+          paint();
+          panel.appendChild(v);
+          panel.appendChild(el('p', { class: 'demo', text: '示意：demo 使用一段示例影片', style: 'margin:22px 0 0;text-align:center' }));
+        }
+      }
+      [['text', '文字', '免费'], ['voice', '语音', COST.voice], ['video', '影片', COST.video]].forEach(function (o) {
+        var small = typeof o[2] === 'number' ? '<small><span class="coin"></span>' + o[2] + '</small>' : '<small>' + o[2] + '</small>';
+        seg.appendChild(el('button', { type: 'button', 'data-m': o[0], html: o[1] + small, onclick: function () { d.mode = o[0]; pane(); } }));
+      });
+      form.appendChild(seg); form.appendChild(panel); p.appendChild(form);
+      var bal = coinsEl(); bal.style.cssText = 'position:absolute;right:60px;top:150px;color:#fff;font-size:46px'; p.appendChild(bal);
+      cta.addEventListener('click', function () {
+        var c = cost();
+        if (!d.name.trim()) { toast('给这件物件取个名字吧'); return; }
+        if (!d.text.trim() && !c) { toast('至少写一句故事，或录一段语音'); return; }
+        if (S.coins < c) { toast('金币不够，还差 ' + (c - S.coins)); return; }
+        S.coins -= c;
+        var modes = []; if (d.text.trim()) modes.push('read'); if (d.voice) modes.push('listen'); if (d.video) modes.push('watch');
+        var id = 'scan' + (S.scans.length + 1);
+        ITEMS[id] = { n: d.name.trim(), p: 0, img: cap.sprite, px: pxFor(cap.f, cap.small), f: cap.f.slice(), h: cap.h, small: cap.small, scan: true, foot: 4,
+          story: { t: d.name.trim(), who: '我・本人讲述', img: cap.photo, modes: modes, dur: d.voice, text: d.text.trim() } };
+        S.scans.push(id); S.owned[id] = 1;
+        var ok = placeNew(id, true);
+        S.tab = ok ? '回忆物件' : '收纳'; S.pick = id; S.sheetDown = false;
+        go('decorate'); toast(ok ? '已放进房间，拖动它来摆放' : '房间放不下了，它先收进了收纳');
+      });
+      p.appendChild(cta);
+      pane(); refresh();
+    },
+    decorate: function (p) {
+      p.appendChild(bg('assets/decorate_empty.jpg'));
+      var DY = -435;
+      var layer = el('div', { class: 'roomlayer edit' });
+      var chip = el('div', { class: 'itemchip' });
+      function ui() {
+        chip.innerHTML = '';
+        var sel = S.sel && byUid(S.sel);
+        if (!sel) { chip.appendChild(el('span', { text: '拖动家具摆放，绿色代表放得下' })); return; }
+        var d = ITEMS[sel.id], D = dims(sel);
+        chip.appendChild(el('span', { html: '<b>' + d.n + '</b>　占地 ' + D[0] + '×' + D[1] + (d.h ? ' · 高 ' + d.h : ' · 贴地') }));
+        if (D[0] !== D[1]) chip.appendChild(el('button', { type: 'button', text: '转向', onclick: function () {
+          if (kids(sel).length) { toast('先把' + d.n + '上的东西移开'); return; }
+          var r = fits(sel, sel.gx, sel.gy, !sel.flip);
+          if (!r.ok || r.on) { toast('这里转不开：' + (r.why || '空间不够')); return; }
+          snapshot(); sel.flip = !sel.flip; S.dirty = true; draw(); ui();
+        } }));
+      }
+      function draw() { drawRoom(layer, DY, true, ui); }
+      function leave(to) {
+        if (!S.dirty) { S.placed = JSON.parse(JSON.stringify(S.saved)); to(); return; }
+        var box = el('div', { class: 'sheet' }, el('h3', { text: '还没有保存' }), el('p', { text: '现在离开，刚才的摆放不会留下。' }),
+          el('button', { class: 'btn', type: 'button', text: '保存并离开', onclick: function () { save(); to(); } }),
+          el('button', { class: 'btn ghost', type: 'button', text: '不保存', onclick: function () { closeSheet(); S.dirty = false; S.placed = JSON.parse(JSON.stringify(S.saved)); to(); } }));
+        openSheet(box);
+      }
+      function save() { S.saved = JSON.parse(JSON.stringify(S.placed)); S.dirty = false; S.undo = []; S.justSaved = true; S.sel = null; }
+      function imgBtn(src, l, t, w, label, fn) {
+        return el('button', { class: 'imgbtn', type: 'button', 'aria-label': label, style: 'left:' + l + 'px;top:' + t + 'px;width:' + w + 'px', onclick: fn }, el('img', { src: src, alt: '', draggable: 'false' }));
+      }
+      function cycle() { if (!S.rooms.length) { toast('目前只有收藏室，先解锁新角落吧'); return; } leave(function () { go('space', { key: S.rooms[0] }); }); }
+      p.appendChild(layer);
+      p.appendChild(hot(55, 135, 140, 215, '首页', function () { leave(function () { go('room'); }); }));
+      p.appendChild(hot(995, 135, 1075, 215, '通知', bell));
+      p.appendChild(chip);
+      p.appendChild(imgBtn('assets/ui_left.png', 44, 250, 172, '上一个空间', cycle));
+      p.appendChild(imgBtn('assets/ui_right.png', 905, 250, 186, '下一个空间', cycle));
+      p.appendChild(imgBtn('assets/ui_trash.png', 52, 929, 132, '把选中的物件收起来', function () {
+        var sel = S.sel && byUid(S.sel);
+        if (!sel) { toast('先点选房间里的物件'); return; }
+        snapshot();
+        var gone = [sel.uid].concat(kids(sel).map(function (k) { return k.uid; }));
+        S.placed = S.placed.filter(function (x) { return gone.indexOf(x.uid) < 0; }); S.sel = null; S.dirty = true; draw(); ui(); renderSheet(); toast('已收进收纳，可以随时再摆出来');
+      }));
+      p.appendChild(imgBtn('assets/ui_undo.png', 749, 935, 132, '撤销', function () {
+        if (!S.undo.length) { toast('没有可以撤销的操作'); return; }
+        S.placed = JSON.parse(S.undo.pop()); S.sel = null; S.dirty = true; draw(); ui(); renderSheet();
+      }));
+      p.appendChild(imgBtn('assets/ui_save.png', 908, 886, 186, '保存', function () { save(); go('room'); toast('回忆空间已保存'); }));
+
+      var sheet = el('div', { class: 'sheet', style: 'height:910px;padding:30px 50px 34px;gap:20px;border-radius:60px 60px 0 0;animation:none;transition:transform .22s;z-index:1000;transform:translateY(' + (S.sheetDown ? 770 : 0) + 'px)' });
+      var head = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;min-height:90px;font-weight:700' });
+      var fold = el('button', { type: 'button', 'aria-label': '收起或展开商店', style: 'width:96px;height:90px;border:0;background:none;color:#7d6248;cursor:pointer;padding:0', html: svg('back'), onclick: function () { S.sheetDown = !S.sheetDown; sheet.style.transform = 'translateY(' + (S.sheetDown ? 770 : 0) + 'px)'; } });
+      fold.firstChild.style.cssText = 'width:64px;height:64px';
+      head.appendChild(fold);
+      head.appendChild(el('button', { type: 'button', text: '回忆商店', 'aria-label': '打开完整商店', style: 'border:0;background:none;font:inherit;font-size:58px;font-weight:700;color:var(--brown-deep);cursor:pointer', onclick: function () { go('shop'); } }));
+      head.appendChild(coinsEl());
+      sheet.appendChild(head);
+      var tabs = el('div', { class: 'tabs' }), grid = el('div', { class: 'grid', style: '--pic:120px;gap:20px' });
+      var buyBtn = el('button', { class: 'btn orange', type: 'button', style: 'min-height:104px;align-self:center;padding:0 80px;flex:none' });
+      function renderSheet() {
+        tabs.innerHTML = '';
+        Object.keys(TABS).forEach(function (t) { tabs.appendChild(el('button', { class: 'tab' + (S.tab === t ? ' on' : ''), type: 'button', text: t, style: 'height:80px;font-size:38px;padding:0 30px', onclick: function () { S.tab = t; var l = tabIds(t); if (l.length) S.pick = l[0]; renderSheet(); } })); });
+        grid.innerHTML = '';
+        var list = tabIds(S.tab);
+        if (list.indexOf(S.pick) < 0 && list.length) S.pick = list[0];
+        shopCards(grid, true, renderSheet);
+        buyBtn.hidden = !list.length;
+        if (list.length) {
+          var it = ITEMS[S.pick], left = avail(S.pick);
+          buyBtn.disabled = !!(it.scan && left <= 0);
+          buyBtn.innerHTML = it.scan && left <= 0 ? '已在房间里' : (!it.slot && left > 0) ? '摆进房间' : '购买　<span class="coin"></span>' + it.p;
+        }
+      }
+      buyBtn.addEventListener('click', function () { buy(S.pick, function () { draw(); ui(); renderSheet(); syncCoins(); toast('已放进房间，拖动它来摆放'); }); });
+      sheet.appendChild(tabs); sheet.appendChild(grid); sheet.appendChild(buyBtn);
+      p.appendChild(sheet);
+      draw(); ui(); renderSheet();
+    },
+    shop: function (p) {
+      p.style.background = '#979b78';
+      header(p, '回忆商店', function () { go('decorate'); }, coinsEl());
+      var tabs = el('div', { class: 'tabs', style: 'position:absolute;left:50px;right:0;top:290px' });
+      var grid = el('div', { class: 'grid', style: 'position:absolute;left:46px;right:46px;top:430px;bottom:40px;--pic:290px' });
+      function confirmBuy(id) {
+        var it = ITEMS[id], left = avail(id), own = !it.slot && left > 0;
+        var box = el('div', { class: 'sheet' }, el('h3', { text: it.n }),
+          el('img', { src: it.img, alt: '', style: 'height:300px;align-self:center' }),
+          el('p', { text: footText(it) }));
+        box.appendChild(el('p', { html: own ? '收纳里还有 ' + left + ' 件，可以直接摆出来。' : '价格 <span class="coin"></span> ' + it.p + '，你目前有 ' + S.coins.toLocaleString('en-US') + ' 金币。' }));
+        box.appendChild(el('button', { class: 'btn orange', type: 'button', text: it.slot ? '购买并选择主题' : own ? '摆进房间' : '购买并摆放', onclick: function () { closeSheet(); buy(id, function () { go('decorate'); toast('已放进房间，拖动它来摆放'); }); } }));
+        openSheet(box);
+      }
+      function render() {
+        tabs.innerHTML = '';
+        Object.keys(TABS).forEach(function (t) { tabs.appendChild(el('button', { class: 'tab' + (S.tab === t ? ' on' : ''), type: 'button', text: t, onclick: function () { S.tab = t; render(); } })); });
+        grid.innerHTML = '';
+        shopCards(grid, false, confirmBuy);
+      }
+      p.appendChild(tabs); p.appendChild(grid); render();
+    },
+    stack: function (p) {
+      p.appendChild(bg('assets/stack.jpg'));
+      p.appendChild(hot(40, 110, 130, 200, '返回', function () { go('room'); }));
+      p.appendChild(hot(325, 1460, 870, 1925, '收藏室', function () { go('room'); }));
+      var tiers = [{ t: 1062, pill: 1192 }, { t: 688, pill: 816 }, { t: 255, pill: 424 }];
+      tiers.forEach(function (tier, i) {
+        var key = S.rooms[i];
+        if (key) {
+          p.appendChild(el('img', { src: THEMES[key].img, alt: '', style: 'position:absolute;left:330px;top:' + (tier.t + 6) + 'px;width:470px' }));
+          p.appendChild(hot(325, tier.t, 1000, tier.t + 430, THEMES[key].n, function () { go('space', { key: key }); }));
+        } else {
+          if (S.slots > 0 && i === S.rooms.length) p.appendChild(el('span', { class: 'tag', text: '选主题', style: 'position:absolute;left:822px;top:' + (tier.pill + 2) + 'px;font-size:40px;padding:8px 26px;background:#ffd76a' }));
+          p.appendChild(hot(325, tier.t, 970, tier.t + 430, '待解锁的空间', function () {
+            if (S.slots > 0) { go('map'); return; }
+            var it = ITEMS.corner;
+            var box = el('div', { class: 'sheet' }, el('h3', { text: '解锁新角落' }), el('img', { src: it.img, alt: '', style: 'height:280px;align-self:center' }),
+              el('p', { text: '多一个角落，就能多放一段回忆。解锁后可以选择空间主题。' }),
+              el('button', { class: 'btn orange', type: 'button', html: '解锁　<span class="coin"></span>' + it.p, onclick: function () { closeSheet(); buy('corner'); } }));
+            openSheet(box);
+          }));
+        }
+      });
+    },
+    map: function (p) {
+      p.appendChild(bg('assets/map.jpg'));
+      p.appendChild(hot(45, 115, 130, 205, '返回', function () { go('stack'); }));
+      function theme(key) {
+        if (S.rooms.indexOf(key) >= 0) { go('space', { key: key }); return; }
+        if (S.slots > 0) { S.slots--; S.rooms.push(key); go('stack'); toast(THEMES[key].n + '已加入你的空间'); return; }
+        var box = el('div', { class: 'sheet' }, el('h3', { text: THEMES[key].n }), el('p', { text: '需要先解锁一个新角落，才能放进这个主题。' }),
+          el('button', { class: 'btn', type: 'button', text: '去解锁', onclick: function () { closeSheet(); go('stack'); } }));
+        openSheet(box);
+      }
+      function locked(name) {
+        var box = el('div', { class: 'sheet' }, el('h3', { text: name }), el('p', { text: '这个空间还没开放。再保存几件老物件，就能解锁。' }), el('button', { class: 'btn ghost', type: 'button', text: '知道了', onclick: closeSheet }));
+        openSheet(box);
+      }
+      p.appendChild(hot(340, 245, 840, 770, '收藏室', function () { go('room'); }));
+      p.appendChild(hot(150, 1270, 640, 1615, '校园时光，未解锁', function () { locked('校园时光'); }));
+      p.appendChild(hot(395, 1500, 935, 1910, '秘密花园，未解锁', function () { locked('秘密花园'); }));
+      p.appendChild(hot(125, 700, 530, 1085, '夏日海边', function () { theme('beach'); }));
+      p.appendChild(hot(535, 905, 1020, 1315, '老屋客厅', function () { theme('house'); }));
+    },
+    space: function (p) {
+      var key = S.params.key, th = THEMES[key];
+      p.appendChild(el('div', { class: 'night' }));
+      header(p, th.n, function () { go('stack'); });
+      p.appendChild(el('img', { src: th.img, alt: th.n, style: 'position:absolute;left:50px;top:560px;width:1025px' }));
+      p.appendChild(el('div', { class: 'hint', style: 'bottom:280px', text: '这个空间还是空的，先放进第一件老物件吧。' }));
+      p.appendChild(el('button', { class: 'btn', type: 'button', text: '扫描老物件', style: 'position:absolute;left:225px;right:225px;bottom:90px', onclick: function () { go('scan'); } }));
+    },
+    visitList: function (p) {
+      p.style.background = 'linear-gradient(#8c905d,#b9b888 45%,#fff5da)';
+      header(p, '参观他人的空间', function () { go('room'); });
+      var list = el('div', { class: 'vlist' });
+      ['suwan', 'xiaoyu', 'wanlan'].forEach(function (id) {
+        var v = VISITS[id];
+        var c = el('button', { class: 'vcard', type: 'button', html: '<img src="' + v.img + '" alt=""><div><b>' + v.room + '</b><span>' + v.tag + '・' + v.marks.length + ' 件老物件</span></div>' + svg('arrow'), onclick: function () { go('visit', { id: id }); } });
+        list.appendChild(c);
+      });
+      p.appendChild(list);
+    },
+    visit: function (p) {
+      var id = S.params.id, v = VISITS[id];
+      S.seen[id] = S.seen[id] || {};
+      function count() { return Object.keys(S.seen[id]).length; }
+      if (v.full) p.appendChild(bg(v.full)); else p.appendChild(el('div', { class: 'night' }));
+      header(p, v.room, function () { go('visitList'); });
+      if (v.full) { p.querySelector('.bar').style.top = '200px'; p.querySelector('.bar').style.fontSize = '58px'; p.querySelector('.back').style.top = '205px'; }
+      if (!v.full) p.appendChild(el('img', { src: v.img, alt: v.room, style: 'position:absolute;left:' + v.left + 'px;top:' + v.top + 'px;width:' + (v.scale * (id === 'suwan' ? 490 : 476)) + 'px' }));
+      var hint = el('div', { class: 'hint' });
+      function upd() { hint.textContent = count() < v.marks.length ? '点亮的老物件都有故事（已看 ' + count() + ' / ' + v.marks.length + '）' : '这个空间的故事都看完了'; }
+      v.marks.forEach(function (m, i) {
+        var cx = v.full ? m.x : v.left + m.x * v.scale, cy = v.full ? m.y : v.top + m.y * v.scale;
+        var b = el('button', { class: 'mark' + (S.seen[id][i] ? ' done' : ''), type: 'button', 'aria-label': m.s.t, style: 'left:' + (cx - 60) + 'px;top:' + (cy - 60) + 'px', html: '<i></i>', onclick: function () { S.lastStory = true; storySheet(m.s, function () { S.seen[id][i] = 1; b.classList.add('done'); upd(); markRail(); }); } });
+        p.appendChild(b);
+      });
+      upd(); p.appendChild(hint);
+    }
+  };
+
+  function useSample() {
+    S.cap = { photo: 'assets/polaroid_big.jpg', sprite: 'assets/polaroid.png', name: '海边的那张照片', f: [1, 1], h: 1, small: true, question: '那天是谁和你一起看的日落？', source: 'sample' };
+  }
+
+  /* ---------- flow rail ---------- */
+  var FLOW = [
+    ['开始', [
+      ['注册 / 登录', 'start', function () { go('start'); }],
+      ['进入回忆空间', 'enter', function () { go('enter'); }]
+    ]],
+    ['装扮自己的空间', [
+      ['进入自己的空间', 'room', function () { go('room'); }],
+      ['扫描上传老物件', 'scan', function () { go('scan'); }],
+      ['AI 转换成游戏物件', 'scanResult', function () { if (!S.cap) useSample(); go('scanResult'); }],
+      ['添加物件故事', 'edit', function () { if (!S.cap) useSample(); go('edit', { fresh: !S.draft }); }],
+      ['摆放物件・装扮空间', 'decorate', function () { go('decorate'); }],
+      ['回忆商店', 'shop', function () { go('shop'); }],
+      ['我的空间与新角落', 'stack', function () { go('stack'); }],
+      ['选择空间主题', 'map', function () { go('map'); }]
+    ]],
+    ['参观他人的空间', [
+      ['选择他人空间', 'visitList', function () { go('visitList'); }],
+      ['参观空间、点选老物件', 'visit', function () { go('visit', { id: 'suwan' }); }]
+    ]]
+  ];
+  var steps = document.getElementById('steps');
+  FLOW.forEach(function (g) {
+    steps.appendChild(el('h2', { text: g[0] }));
+    g[1].forEach(function (s) { steps.appendChild(el('button', { class: 'step', type: 'button', 'data-s': s[1], text: s[0], onclick: s[2] })); });
+  });
+  function markRail() {
+    var cur = S.screen === 'convert' ? 'scanResult' : S.screen;
+    steps.querySelectorAll('.step').forEach(function (b) { b.classList.toggle('on', b.dataset.s === cur); });
+  }
+  document.getElementById('toggleHot').addEventListener('click', function () {
+    var on = stage.classList.toggle('showhot'); this.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  document.getElementById('restart').addEventListener('click', function () { S = fresh(); go('start'); });
+  stage.addEventListener('click', function (e) {
+    if (e.target.closest('button,input,textarea,label,.sprite,.sheet,.itemchip')) return;
+    stage.classList.add('reveal'); setTimeout(function () { stage.classList.remove('reveal'); }, 800);
+  });
+
+  function fit() {
+    var narrow = innerWidth <= 880;
+    var aw = narrow ? innerWidth : innerWidth - 300 - 56 - 48, ah = narrow ? innerHeight : innerHeight - 32;
+    k = Math.min(aw / W, ah / H);
+    phone.style.width = W * k + 'px'; phone.style.height = H * k + 'px';
+    stage.style.transform = 'scale(' + k + ')';
+  }
+  addEventListener('resize', fit); fit();
+  ['start', 'enter', 'room_empty', 'scan', 'decorate_empty', 'stack', 'map', 'polaroid_big'].forEach(function (n) { new Image().src = 'assets/' + n + '.jpg'; });
+  go('start');
+})();
+</script>
