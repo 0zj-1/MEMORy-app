@@ -927,20 +927,27 @@ button{font-family:inherit}
             if (!live) return;
             if (!enabled) { live = false; finish(null, 'none'); return; }
             line.textContent = '正在画成游戏风格…'; sub.textContent = '通常要一分钟左右，照片只用来生成这件物件。';
+            /* Name and footprint come from their own request, so a failure there still leaves the image. */
+            var meta = fetch('/api/describe', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: photo, signal: ctl.signal }).then(function (res) { return res.ok ? res.json() : {}; }).then(function (d) {
+              var text = ((d.output || []).reduce(function (all, o) { return all.concat(o.content || []); }, []).filter(function (x) { return x.type === 'output_text'; })[0] || {}).text;
+              return text ? JSON.parse(text) : {};
+            }).catch(function () { return {}; });
             return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (blob) {
               return fetch('/api/convert', { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: blob, signal: ctl.signal });
             }).then(function (res) {
               return res.json().catch(function () { return {}; }).then(function (data) {
-                if (!res.ok) { var err = new Error(data.error || 'failed'); err.code = data.error; throw err; }
-                return data;
+                if (!res.ok) { var err = new Error(data.error || 'failed'); err.code = data.error || 'http_' + res.status; throw err; }
+                var b64 = data.data && data.data[0] && data.data[0].b64_json;
+                if (!b64) { var bad = new Error('no image'); bad.code = 'no_image'; throw bad; }
+                return 'data:image/png;base64,' + b64;
               });
-            }).then(function (r) {
-              return trimSprite(r.sprite).then(function (sprite) {
-                if (!live) return;
-                live = false;
-                var f = Array.isArray(r.footprint) ? r.footprint : [];
-                finish({ sprite: sprite, name: String(r.name || '老物件').slice(0, 10), f: [clampInt(f[0], 1, 5, 1), clampInt(f[1], 1, 5, 1)], h: clampInt(r.height, 1, 5, 1), small: !!r.small, question: String(r.question || '这件东西是怎么来到你身边的？').slice(0, 60) });
-              });
+            }).then(function (image) {
+              return Promise.all([trimSprite(image), meta]);
+            }).then(function (all) {
+              if (!live) return;
+              live = false;
+              var sprite = all[0], r = all[1], f = Array.isArray(r.footprint) ? r.footprint : [];
+              finish({ sprite: sprite, name: String(r.name || '老物件').slice(0, 10), f: [clampInt(f[0], 1, 5, 1), clampInt(f[1], 1, 5, 1)], h: clampInt(r.height, 1, 5, 1), small: !!r.small, question: String(r.question || '这件东西是怎么来到你身边的？').slice(0, 60) });
             });
           });
         }
@@ -960,6 +967,8 @@ button{font-family:inherit}
       }).catch(function (e) {
         if (!live) return;
         live = false;
+        S.lastCode = e && (e.code || e.name || e.message);
+        console.error('AI conversion failed', S.lastCode);
         finish(null, e && e.code === 'not_granted' ? 'denied' : e && (e.code === 'daily_limit' || e.code === 'too_fast') ? e.code : e && e.code === 'refused' ? 'refused' : 'error');
       });
     },
@@ -971,7 +980,7 @@ button{font-family:inherit}
         !cap.cut ? '没有认出主体，请把物件放在画面中间重拍' : !cap.reason || cap.reason === 'none' || cap.reason === 'stopped' ? '已抠出主体，透明底' :
         cap.reason === 'denied' ? '未允许使用 AI，已改用本机风格化' : cap.reason === 'stopped' ? '已使用本机风格化' :
         cap.reason === 'daily_limit' ? '今天的 AI 额度用完了，已改用本机风格化' : cap.reason === 'too_fast' ? '操作太频繁，这次改用本机风格化' :
-        cap.reason === 'refused' ? 'AI 无法处理这张照片，已改用本机风格化' : cap.reason === 'error' ? 'AI 暂时出错，已改用本机风格化' : 'AI 未连接，已改用本机风格化';
+        cap.reason === 'refused' ? 'AI 无法处理这张照片，已改用本机风格化' : cap.reason === 'error' ? 'AI 暂时出错（' + S.lastCode + '），已改用本机抠图' : 'AI 未连接，已改用本机风格化';
       p.appendChild(el('div', { class: 'tag', text: srcText, style: 'position:absolute;left:50%;top:262px;transform:translateX(-50%)' }));
       var pair = el('div', { class: 'pair' });
       pair.appendChild(el('figure', {}, el('img', { src: cap.photo, alt: '原始照片', style: 'object-fit:cover' }), el('figcaption', { text: '原始照片' })));

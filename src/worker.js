@@ -55,78 +55,32 @@ async function addUse(env, u, delta) {
   ]);
 }
 
-function base64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(out);
-}
-
-async function makeImage(env, request, photo) {
-  const style = await env.ASSETS.fetch(new Request(new URL("/assets/style_ref.png", request.url)));
+/* The Workers free plan allows about 10 ms of CPU per request, so large bodies are forwarded, never parsed or re-encoded. */
+async function requestImage(env, request, buffer, type) {
+  const style = await env.ASSETS.fetch(new Request(new URL("/assets/style_ref.jpg", request.url)));
   if (!style.ok) throw new Error("style reference is missing");
   const form = new FormData();
   form.append("model", env.IMAGE_MODEL);
   form.append("prompt", IMAGE_PROMPT);
-  form.append("image[]", photo, "photo.jpg");
-  form.append("image[]", new File([await style.arrayBuffer()], "style.png", { type: "image/png" }));
+  form.append("image[]", new File([buffer], "photo.jpg", { type }));
+  form.append("image[]", new File([await style.arrayBuffer()], "style.jpg", { type: "image/jpeg" }));
   form.append("size", "1024x1024");
   form.append("quality", env.IMAGE_QUALITY);
   form.append("background", "transparent");
   form.append("output_format", "png");
-  const r = await fetch(`${env.OPENAI_BASE}/images/edits`, {
+  return fetch(`${env.OPENAI_BASE}/images/edits`, {
     method: "POST",
     headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
     body: form,
   });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    const e = new Error(err.error?.message || `image request failed: ${r.status}`);
-    e.status = r.status;
-    e.code = err.error?.code;
-    throw e;
-  }
-  const data = await r.json();
-  const b64 = data.data?.[0]?.b64_json;
-  if (!b64) throw new Error("no image in the response");
-  return `data:image/png;base64,${b64}`;
-}
-
-/* Name and footprint are a nicety: the image still counts if this call fails. */
-async function describe(env, photoBase64, type) {
-  try {
-    const r = await fetch(`${env.OPENAI_BASE}/responses`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: env.TEXT_MODEL,
-        input: [{ role: "user", content: [
-          { type: "input_text", text: META_PROMPT },
-          { type: "input_image", image_url: `data:${type};base64,${photoBase64}`, detail: "low" },
-        ] }],
-        text: { format: { type: "json_object" } },
-        store: false,
-      }),
-    });
-    if (!r.ok) return {};
-    const data = await r.json();
-    const text = data.output?.flatMap((o) => o.content || []).find((c) => c.type === "output_text")?.text;
-    return JSON.parse(text || "{}");
-  } catch {
-    return {};
-  }
 }
 
 async function convert(request, env) {
-  const url = new URL(request.url);
-  const origin = request.headers.get("origin");
-  if (origin && new URL(origin).host !== url.host) return json({ error: "forbidden" }, 403);
-  if (!aiEnabled(env)) return json({ error: "not_configured" }, 503);
-
+  const blocked = guard(request, env);
+  if (blocked) return blocked;
   const type = (request.headers.get("content-type") || "").split(";")[0];
   if (!ACCEPTED.includes(type)) return json({ error: "bad_type" }, 415);
-  const size = Number(request.headers.get("content-length"));
-  if (size > MAX_UPLOAD) return json({ error: "too_large" }, 413);
+  if (Number(request.headers.get("content-length")) > MAX_UPLOAD) return json({ error: "too_large" }, 413);
 
   const { success } = await env.BURST.limit({ key: clientIp(request) });
   if (!success) return json({ error: "too_fast" }, 429);
@@ -137,16 +91,49 @@ async function convert(request, env) {
   if (!buffer.byteLength || buffer.byteLength > MAX_UPLOAD) return json({ error: "too_large" }, 413);
   await addUse(env, u, 1);
 
+  let upstream;
   try {
-    const photo = new File([buffer], "photo.jpg", { type });
-    const [sprite, meta] = await Promise.all([makeImage(env, request, photo), describe(env, base64(buffer), type)]);
-    return json({ sprite, ...meta, model: env.IMAGE_MODEL });
+    upstream = await requestImage(env, request, buffer, type);
   } catch (e) {
     await addUse(env, u, 0); // a failed generation gives the use back
-    console.error("convert failed", e.status, e.code, e.message);
-    const refused = e.status === 400 && /moderation|safety/i.test(`${e.code} ${e.message}`);
-    return json({ error: refused ? "refused" : "upstream" }, refused ? 422 : 502);
+    console.error("convert network failure", e.message);
+    return json({ error: "upstream_network" }, 502);
   }
+  if (upstream.ok) {
+    return new Response(upstream.body, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  }
+  await addUse(env, u, 0);
+  const err = await upstream.json().catch(() => ({}));
+  console.error("convert failed", upstream.status, err.error?.code, err.error?.message);
+  const refused = upstream.status === 400 && /moderation|safety/i.test(`${err.error?.code} ${err.error?.message}`);
+  return json({ error: refused ? "refused" : `upstream_${upstream.status}` }, refused ? 422 : 502);
+}
+
+/* Name and footprint are a nicety, so a failure here only leaves the defaults. The page sends the photo as a data URL. */
+async function describe(request, env) {
+  const blocked = guard(request, env);
+  if (blocked) return blocked;
+  if (Number(request.headers.get("content-length")) > MAX_UPLOAD * 1.4) return json({ error: "too_large" }, 413);
+  const dataUrl = await request.text();
+  if (!dataUrl.startsWith("data:image/")) return json({ error: "bad_type" }, 415);
+  const body = `{"model":${JSON.stringify(env.TEXT_MODEL)},"store":false,"text":{"format":{"type":"json_object"}},"input":[{"role":"user","content":[{"type":"input_text","text":${JSON.stringify(META_PROMPT)}},{"type":"input_image","detail":"low","image_url":"${dataUrl.replace(/[^A-Za-z0-9+/=:;,\-]/g, "")}"}]}]}`;
+  const r = await fetch(`${env.OPENAI_BASE}/responses`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" },
+    body,
+  });
+  if (!r.ok) {
+    console.error("describe failed", r.status);
+    return json({ error: `upstream_${r.status}` }, 502);
+  }
+  return new Response(r.body, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+}
+
+function guard(request, env) {
+  const origin = request.headers.get("origin");
+  if (origin && new URL(origin).host !== new URL(request.url).host) return json({ error: "forbidden" }, 403);
+  if (!aiEnabled(env)) return json({ error: "not_configured" }, 503);
+  return null;
 }
 
 export default {
@@ -160,6 +147,10 @@ export default {
     if (pathname === "/api/convert") {
       if (request.method !== "POST") return json({ error: "method" }, 405);
       return convert(request, env);
+    }
+    if (pathname === "/api/describe") {
+      if (request.method !== "POST") return json({ error: "method" }, 405);
+      return describe(request, env);
     }
     if (pathname.startsWith("/api/")) return json({ error: "not_found" }, 404);
     return env.ASSETS.fetch(request);
