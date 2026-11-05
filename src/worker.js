@@ -22,6 +22,10 @@ function json(data, status = 200) {
   });
 }
 
+function aiEnabled(env) {
+  return env.AI_ENABLED === "true" && !!env.OPENAI_API_KEY;
+}
+
 function dayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -117,7 +121,7 @@ async function convert(request, env) {
   const url = new URL(request.url);
   const origin = request.headers.get("origin");
   if (origin && new URL(origin).host !== url.host) return json({ error: "forbidden" }, 403);
-  if (!env.OPENAI_API_KEY) return json({ error: "not_configured" }, 503);
+  if (!aiEnabled(env)) return json({ error: "not_configured" }, 503);
 
   const type = (request.headers.get("content-type") || "").split(";")[0];
   if (!ACCEPTED.includes(type)) return json({ error: "bad_type" }, 415);
@@ -149,7 +153,7 @@ export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
     if (pathname === "/api/status") {
-      if (!env.OPENAI_API_KEY) return json({ enabled: false });
+      if (!aiEnabled(env)) return json({ enabled: false });
       const u = await usage(env, request);
       return json({ enabled: true, left: Math.max(0, Math.min(u.dailyMax - u.all, u.ipMax - u.ip)) });
     }
