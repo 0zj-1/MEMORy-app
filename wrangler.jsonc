@@ -12,7 +12,8 @@
   "ai": { "binding": "AI" },
   "kv_namespaces": [{ "binding": "USAGE", "id": "de810ea572ef4d7184f4cfd91d872b3c" }],
   "ratelimits": [
-    { "name": "BURST", "namespace_id": "20261105", "simple": { "limit": 3, "period": 60 } }
+    { "name": "BURST", "namespace_id": "20261105", "simple": { "limit": 3, "period": 60 } },
+    { "name": "META_BURST", "namespace_id": "20261106", "simple": { "limit": 6, "period": 60 } }
   ],
   "vars": {
     "AI_ENABLED": "true",

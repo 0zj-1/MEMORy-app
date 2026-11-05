@@ -6,7 +6,7 @@ Identify the single main subject of image 1 and redraw only that object as one g
 
 Keep what makes this object recognisable: its real shape, colours, proportions and visible details. Show it in a 3/4 isometric view from above.
 
-Remove everything else: hands, table, floor, wall, other objects and the whole original background. Draw no shadow of any kind: no ground shadow, no drop shadow. Place the single object in the centre on a pure solid white background, with a clear margin all around it. No text, no logos, nothing copied from image 2.`;
+Remove everything else: hands, table, floor, wall, other objects and the whole original background. Draw no shadow of any kind: no ground shadow, no drop shadow. Place the single object in the centre on a perfectly flat, solid, pure magenta (#FF00FF) background that fills the whole canvas, with a clear margin all around the object. Do not use magenta or pink anywhere on the object. No text, no logos, nothing copied from image 2.`;
 
 const META_PROMPT = `This photo shows an old keepsake someone scanned for a room-decorating game. Reply with only this JSON and nothing else:
 {"name": "the object in Simplified Chinese, at most 8 characters", "footprint": [w, d], "height": h, "small": true or false, "question": "one gentle question in Simplified Chinese that invites the owner to tell the story of this object"}
@@ -104,6 +104,8 @@ async function describe(request, env) {
   const blocked = guard(request, env);
   if (blocked) return blocked;
   if (Number(request.headers.get("content-length")) > MAX_THUMB) return json({ error: "too_large" }, 413);
+  const { success } = await env.META_BURST.limit({ key: clientIp(request) });
+  if (!success) return json({ error: "too_fast" }, 429);
   const dataUrl = await request.text();
   if (!dataUrl.startsWith("data:image/")) return json({ error: "bad_type" }, 415);
   try {

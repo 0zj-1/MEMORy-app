@@ -607,20 +607,15 @@ button{font-family:inherit}
         var W2 = 640, c = el('canvas'); c.width = c.height = W2;
         var x = c.getContext('2d'); x.drawImage(img, 0, 0, W2, W2);
         var im = x.getImageData(0, 0, W2, W2), d = im.data;
+        /* Workers AI cannot output transparency, so items are drawn on magenta and keyed out here. Pale items are safe this way. */
         if (d[3] > 200 && d[W2 * 4 - 1] > 200) {
-          var seen = new Uint8Array(W2 * W2), st = [];
-          for (var i = 0; i < W2; i++) st.push(i, (W2 - 1) * W2 + i, i * W2, i * W2 + W2 - 1);
-          st.forEach(function (n) { seen[n] = 1; });
-          while (st.length) {
-            var n = st.pop(), nx = n % W2, ny = (n / W2) | 0; d[n * 4 + 3] = 0;
-            [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) {
-              var ax = nx + o[0], ay = ny + o[1]; if (ax < 0 || ay < 0 || ax >= W2 || ay >= W2) return;
-              var m = ay * W2 + ax; if (seen[m]) return;
-              /* Spread through the white background and any pale neutral shadow on it; coloured surfaces and the dark outline stop the fill. */
-              var lo = Math.min(d[m * 4], d[m * 4 + 1], d[m * 4 + 2]), hi = Math.max(d[m * 4], d[m * 4 + 1], d[m * 4 + 2]);
-              var pale = lo > 200 || (lo > 150 && hi - lo < 14);
-              if (pale || Math.abs(d[m * 4] - d[n * 4]) + Math.abs(d[m * 4 + 1] - d[n * 4 + 1]) + Math.abs(d[m * 4 + 2] - d[n * 4 + 2]) < 8) { seen[m] = 1; st.push(m); }
-            });
+          for (var q = 0; q < d.length; q += 4) {
+            var key = Math.min(d[q], d[q + 2]) - d[q + 1];
+            if (key > 70) d[q + 3] = 0;
+            else if (key > 26) {
+              d[q + 3] = Math.round(255 * (70 - key) / 44);
+              d[q] = Math.min(d[q], d[q + 1] + 26); d[q + 2] = Math.min(d[q + 2], d[q + 1] + 26);
+            }
           }
           x.putImageData(im, 0, 0);
         }
