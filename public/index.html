@@ -72,6 +72,7 @@ button{font-family:inherit}
 .corner-mark.bl{left:80px;top:1490px;border-right:0;border-top:0;border-bottom-left-radius:24px}
 .corner-mark.br{left:955px;top:1490px;border-left:0;border-top:0;border-bottom-right-radius:24px}
 .camnote{position:absolute;left:90px;right:90px;top:300px;text-align:center;color:#fff;font-size:42px;font-weight:500;line-height:1.45;text-shadow:0 2px 0 rgba(40,25,14,.55);z-index:4}
+.emptyhint{position:absolute;left:150px;right:150px;top:400px;text-align:center;color:#fff;font-size:42px;font-weight:500;line-height:1.5;text-shadow:0 2px 0 rgba(40,25,14,.6)}
 .ainote{position:absolute;left:60px;top:448px;width:680px;color:#f6ecd8;font-size:32px;z-index:4;line-height:1.3}
 .tag.sample{position:absolute;right:60px;top:440px;z-index:4;cursor:pointer;font-family:inherit}
 .convbox{position:absolute;left:162px;top:300px;width:800px;height:800px;border-radius:50px;overflow:hidden;background:#111}
@@ -228,7 +229,8 @@ button{font-family:inherit}
     placed.forEach(function (p) { if (p.on) p.on = placed.filter(function (q) { return q.id === p.on; })[0].uid; });
     return placed;
   }
-  var THEMES = { beach: { n: '夏日海边', img: 'assets/isl_beach.png' }, house: { n: '老屋客厅', img: 'assets/isl_house.png' } };
+  var THEMES = { beach: { n: '夏日海边', img: 'assets/shell_beach.png' }, house: { n: '老屋客厅', img: 'assets/shell_house.png' } };
+  var ROOM_ART = { main: ['assets/room_empty.jpg', 'assets/decorate_empty.jpg'], beach: ['assets/room_beach.jpg', 'assets/decorate_beach.jpg'], house: ['assets/room_house.jpg', 'assets/decorate_house.jpg'] };
   var COST = { voice: 60, video: 120 };
 
   var OWN = {
@@ -267,7 +269,7 @@ button{font-family:inherit}
   function fresh() {
     var owned = {}, placed = startLayout();
     placed.forEach(function (p) { owned[p.id] = (owned[p.id] || 0) + 1; });
-    return { screen: 'start', params: {}, coins: 1280, owned: owned, placed: placed, saved: JSON.parse(JSON.stringify(placed)), undo: [], scans: [], slots: 0, rooms: [], sel: null, tab: '家具', pick: 'lamp', uid: 100, dirty: false, justSaved: false, seen: {}, sheetDown: false, cap: null };
+    return { screen: 'start', params: {}, coins: 1280, owned: owned, placed: placed, saved: JSON.parse(JSON.stringify(placed)), undo: [], scans: [], slots: 0, rooms: [], sel: null, tab: '家具', pick: 'lamp', uid: 100, dirty: false, justSaved: false, seen: {}, sheetDown: false, cap: null, cur: 'main', spaces: {} };
   }
   var S = fresh();
   var timers = [], toastT = 0;
@@ -511,7 +513,22 @@ button{font-family:inherit}
     img.addEventListener('pointermove', mv); img.addEventListener('pointerup', up); img.addEventListener('pointercancel', up);
   }
   function snapshot() { S.undo.push(JSON.stringify(S.placed)); if (S.undo.length > 30) S.undo.shift(); }
-  function avail(id) { return (S.owned[id] || 0) - S.placed.filter(function (p) { return p.id === id; }).length; }
+  /* Each space keeps its own furniture; the owned count is shared across spaces. */
+  function avail(id) {
+    var used = S.placed.filter(function (p) { return p.id === id; }).length;
+    Object.keys(S.spaces).forEach(function (k) { if (k !== S.cur) used += S.spaces[k].saved.filter(function (p) { return p.id === id; }).length; });
+    return (S.owned[id] || 0) - used;
+  }
+  function spaceList() { return ['main'].concat(S.rooms); }
+  function spaceName(k) { return k === 'main' ? '收藏室' : THEMES[k].n; }
+  function enterSpace(k, screen) {
+    S.spaces[S.cur] = { saved: S.saved };
+    var next = S.spaces[k] || { saved: [] };
+    S.cur = k; S.saved = next.saved; S.placed = JSON.parse(JSON.stringify(S.saved));
+    S.undo = []; S.sel = null; S.dirty = false; S.justSaved = false;
+    delete S.spaces[k];
+    go(screen || 'room');
+  }
   function placeNew(id, quiet) {
     var p = { uid: S.uid++, id: id, gx: 0, gy: 0, flip: false, on: null }, spot = findSpot(p);
     if (!spot) { if (!quiet) toast('房间放不下了，先收起一些家具'); return false; }
@@ -688,14 +705,16 @@ button{font-family:inherit}
       p.appendChild(hot(305, 1880, 365, 1950, '粤语', function () { toast('demo 目前只有中文版'); }));
     },
     room: function (p) {
-      p.appendChild(bg('assets/room_empty.jpg'));
+      p.appendChild(bg(ROOM_ART[S.cur][0]));
       p.appendChild(hot(55, 150, 145, 240, '首页', function () { go('enter'); }));
       p.appendChild(hot(990, 150, 1080, 240, '通知', bell));
-      p.appendChild(hot(185, 860, 440, 1150, '照片墙', function () { storySheet(OWN.wall); }));
+      if (S.cur === 'main') p.appendChild(hot(185, 860, 440, 1150, '照片墙', function () { storySheet(OWN.wall); }));
+      else p.appendChild(el('div', { class: 'bar', text: spaceName(S.cur), style: 'top:300px' }));
       var layer = el('div', { class: 'roomlayer' });
       S.placed = JSON.parse(JSON.stringify(S.saved));
       drawRoom(layer, 0, false);
       p.appendChild(layer);
+      if (!S.placed.length) p.appendChild(el('div', { class: 'emptyhint', text: '这里还是空的。按“装扮”摆上家具，或扫描一件老物件放进来。' }));
       var dock = el('div', { class: 'dock' });
       [['scan', '扫描', function () { go('scan'); }], ['sofa', '装扮', function () { S.justSaved = false; S.undo = []; S.dirty = false; S.sel = null; go('decorate'); }], ['layers', '空间', function () { go('stack'); }], ['users', '参观', function () { go('visitList'); }]].forEach(function (d) {
         dock.appendChild(el('button', { type: 'button', html: svg(d[0]) + '<span>' + d[1] + '</span>', onclick: d[2] }));
@@ -903,14 +922,14 @@ button{font-family:inherit}
       pane(); refresh();
     },
     decorate: function (p) {
-      p.appendChild(bg('assets/decorate_empty.jpg'));
+      p.appendChild(bg(ROOM_ART[S.cur][1]));
       var DY = -435;
       var layer = el('div', { class: 'roomlayer edit' });
       var chip = el('div', { class: 'itemchip' });
       function ui() {
         chip.innerHTML = '';
         var sel = S.sel && byUid(S.sel);
-        if (!sel) { chip.appendChild(el('span', { text: '拖动家具摆放，绿色代表放得下' })); return; }
+        if (!sel) { chip.appendChild(el('span', { text: S.placed.length ? spaceName(S.cur) + '：拖动家具摆放，绿色代表放得下' : spaceName(S.cur) + '还是空的，从下面选家具摆进来' })); return; }
         var d = ITEMS[sel.id], D = dims(sel);
         chip.appendChild(el('span', { html: '<b>' + d.n + '</b>　占地 ' + D[0] + '×' + D[1] + (d.h ? ' · 高 ' + d.h : ' · 贴地') }));
         if (D[0] !== D[1]) chip.appendChild(el('button', { type: 'button', text: '转向', onclick: function () {
@@ -932,13 +951,18 @@ button{font-family:inherit}
       function imgBtn(src, l, t, w, label, fn) {
         return el('button', { class: 'imgbtn', type: 'button', 'aria-label': label, style: 'left:' + l + 'px;top:' + t + 'px;width:' + w + 'px', onclick: fn }, el('img', { src: src, alt: '', draggable: 'false' }));
       }
-      function cycle() { if (!S.rooms.length) { toast('目前只有收藏室，先解锁新角落吧'); return; } leave(function () { go('space', { key: S.rooms[0] }); }); }
+      function cycle(step) {
+        var list = spaceList();
+        if (list.length < 2) { toast('目前只有收藏室，先解锁新角落吧'); return; }
+        var nextKey = list[(list.indexOf(S.cur) + step + list.length) % list.length];
+        leave(function () { enterSpace(nextKey, 'decorate'); toast(spaceName(nextKey)); });
+      }
       p.appendChild(layer);
       p.appendChild(hot(55, 135, 140, 215, '首页', function () { leave(function () { go('room'); }); }));
       p.appendChild(hot(995, 135, 1075, 215, '通知', bell));
       p.appendChild(chip);
-      p.appendChild(imgBtn('assets/ui_left.png', 44, 250, 172, '上一个空间', cycle));
-      p.appendChild(imgBtn('assets/ui_right.png', 905, 250, 186, '下一个空间', cycle));
+      p.appendChild(imgBtn('assets/ui_left.png', 44, 250, 172, '上一个空间', function () { cycle(-1); }));
+      p.appendChild(imgBtn('assets/ui_right.png', 905, 250, 186, '下一个空间', function () { cycle(1); }));
       p.appendChild(imgBtn('assets/ui_trash.png', 52, 929, 132, '把选中的物件收起来', function () {
         var sel = S.sel && byUid(S.sel);
         if (!sel) { toast('先点选房间里的物件'); return; }
@@ -1006,13 +1030,14 @@ button{font-family:inherit}
     stack: function (p) {
       p.appendChild(bg('assets/stack.jpg'));
       p.appendChild(hot(40, 110, 130, 200, '返回', function () { go('room'); }));
-      p.appendChild(hot(325, 1460, 870, 1925, '收藏室', function () { go('room'); }));
+      p.appendChild(hot(325, 1460, 870, 1925, '收藏室', function () { enterSpace('main'); }));
       var tiers = [{ t: 1062, pill: 1192 }, { t: 688, pill: 816 }, { t: 255, pill: 424 }];
       tiers.forEach(function (tier, i) {
         var key = S.rooms[i];
         if (key) {
-          p.appendChild(el('img', { src: THEMES[key].img, alt: '', style: 'position:absolute;left:330px;top:' + (tier.t + 6) + 'px;width:470px' }));
-          p.appendChild(hot(325, tier.t, 1000, tier.t + 430, THEMES[key].n, function () { go('space', { key: key }); }));
+          p.appendChild(el('img', { src: THEMES[key].img, alt: '', style: 'position:absolute;left:323px;top:' + (tier.t - 8) + 'px;width:490px' }));
+          p.appendChild(el('span', { class: 'tag', text: THEMES[key].n, style: 'position:absolute;left:815px;top:' + (tier.pill + 2) + 'px;font-size:36px;padding:8px 22px' }));
+          p.appendChild(hot(325, tier.t, 1000, tier.t + 430, THEMES[key].n, function () { enterSpace(key); }));
         } else {
           if (S.slots > 0 && i === S.rooms.length) p.appendChild(el('span', { class: 'tag', text: '选主题', style: 'position:absolute;left:822px;top:' + (tier.pill + 2) + 'px;font-size:40px;padding:8px 26px;background:#ffd76a' }));
           p.appendChild(hot(325, tier.t, 970, tier.t + 430, '待解锁的空间', function () {
@@ -1030,8 +1055,8 @@ button{font-family:inherit}
       p.appendChild(bg('assets/map.jpg'));
       p.appendChild(hot(45, 115, 130, 205, '返回', function () { go('stack'); }));
       function theme(key) {
-        if (S.rooms.indexOf(key) >= 0) { go('space', { key: key }); return; }
-        if (S.slots > 0) { S.slots--; S.rooms.push(key); go('stack'); toast(THEMES[key].n + '已加入你的空间'); return; }
+        if (S.rooms.indexOf(key) >= 0) { enterSpace(key); return; }
+        if (S.slots > 0) { S.slots--; S.rooms.push(key); enterSpace(key); toast('新空间已建立：' + THEMES[key].n); return; }
         var box = el('div', { class: 'sheet' }, el('h3', { text: THEMES[key].n }), el('p', { text: '需要先解锁一个新角落，才能放进这个主题。' }),
           el('button', { class: 'btn', type: 'button', text: '去解锁', onclick: function () { closeSheet(); go('stack'); } }));
         openSheet(box);
@@ -1040,19 +1065,11 @@ button{font-family:inherit}
         var box = el('div', { class: 'sheet' }, el('h3', { text: name }), el('p', { text: '这个空间还没开放。再保存几件老物件，就能解锁。' }), el('button', { class: 'btn ghost', type: 'button', text: '知道了', onclick: closeSheet }));
         openSheet(box);
       }
-      p.appendChild(hot(340, 245, 840, 770, '收藏室', function () { go('room'); }));
+      p.appendChild(hot(340, 245, 840, 770, '收藏室', function () { enterSpace('main'); }));
       p.appendChild(hot(150, 1270, 640, 1615, '校园时光，未解锁', function () { locked('校园时光'); }));
       p.appendChild(hot(395, 1500, 935, 1910, '秘密花园，未解锁', function () { locked('秘密花园'); }));
       p.appendChild(hot(125, 700, 530, 1085, '夏日海边', function () { theme('beach'); }));
       p.appendChild(hot(535, 905, 1020, 1315, '老屋客厅', function () { theme('house'); }));
-    },
-    space: function (p) {
-      var key = S.params.key, th = THEMES[key];
-      p.appendChild(el('div', { class: 'night' }));
-      header(p, th.n, function () { go('stack'); });
-      p.appendChild(el('img', { src: th.img, alt: th.n, style: 'position:absolute;left:50px;top:560px;width:1025px' }));
-      p.appendChild(el('div', { class: 'hint', style: 'bottom:280px', text: '这个空间还是空的，先放进第一件老物件吧。' }));
-      p.appendChild(el('button', { class: 'btn', type: 'button', text: '扫描老物件', style: 'position:absolute;left:225px;right:225px;bottom:90px', onclick: function () { go('scan'); } }));
     },
     visitList: function (p) {
       p.style.background = 'linear-gradient(#8c905d,#b9b888 45%,#fff5da)';
