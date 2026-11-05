@@ -9,19 +9,11 @@
 
 ## AI 轉換
 
-掃描後，`src/worker.js` 會把照片和風格參考圖送給 OpenAI 的圖像模型，只留下辨識出的主體並輸出透明底的遊戲物件，同時建議名稱與佔地。照片不會存在本站。
+掃描後，`src/worker.js` 會把照片和風格參考圖送給 Cloudflare Workers AI 的 FLUX.2 模型，生成白底的遊戲物件，頁面再清掉白底和陰影，變成透明底。另一個視覺模型會建議名稱與佔地。不需要 API 金鑰，照片不會存在本站。
 
-金鑰只放在 Cloudflare，不進程式碼：
+額度用完或出錯時，會改用瀏覽器內的本機處理：以圖割（GrabCut）從畫面中央認出主體、去背成透明底，再壓色加描邊。背景單純、物件居中時效果最好。
 
-```bash
-npx wrangler secret put OPENAI_API_KEY
-```
-
-沒有金鑰、額度用完或出錯時，會改用瀏覽器內的本機處理：以圖割（GrabCut）從畫面中央認出主體、去背成透明底，再壓色加描邊。背景單純、物件居中時效果最好，照片也不會上傳。模型和每日上限都在 `wrangler.jsonc` 的 `vars`（`DAILY_LIMIT` 是全站每日上限，`IP_DAILY_LIMIT` 是每個 IP 的每日上限）。
-
-要關閉 AI 時，把 `wrangler.jsonc` 的 `AI_ENABLED` 改成 `"false"`，再重新部署。
-
-本機測試時，把假金鑰寫進 `.dev.vars`。這個檔案不會被提交。
+模型和每日上限都在 `wrangler.jsonc` 的 `vars`（`DAILY_LIMIT` 是全站每日上限，`IP_DAILY_LIMIT` 是每個 IP 的每日上限）。要關閉 AI 時，把 `AI_ENABLED` 改成 `"false"`，再重新部署。
 
 ## 在本機執行
 

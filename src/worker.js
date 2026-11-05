@@ -1,18 +1,19 @@
-/* Serves the demo and turns a scanned photo into a game item with OpenAI. The API key stays here on the server. */
+/* Serves the demo and turns a scanned photo into a game item with Cloudflare Workers AI. */
 
 const IMAGE_PROMPT = `Image 1 is a photo of someone's real keepsake. Image 2 is the style reference from a cozy isometric room-decorating game.
 
-First identify the single main subject of image 1: the one keepsake the photo is about. Then redraw only that subject as one game item, in exactly the art style of image 2: warm hand-illustrated look, soft cream, brown, olive and amber tones, clean dark brown outlines with rounded joins, simple shading on each surface.
+Identify the single main subject of image 1 and redraw only that object as one game item, in exactly the illustrated art style of image 2: warm hand-illustrated cartoon look, soft cream, brown, olive and amber tones, clean dark brown outlines, simple shading. Not a photograph.
 
-Keep what makes this particular object recognisable: its real shape, colours, proportions and visible details. If it is a photograph or a print, draw it as a printed photo with a simplified picture. Show it in a 3/4 isometric view from above, as if it stands on the floor of an isometric room.
+Keep what makes this object recognisable: its real shape, colours, proportions and visible details. Show it in a 3/4 isometric view from above.
 
-Remove everything that is not the subject: hands, table, floor, wall, other objects, cast shadows and the whole background. Every pixel outside the subject's outline must be fully transparent. Centre the subject, let it fill most of the canvas, with its base near the bottom edge. No added text or logos, and nothing copied from image 2.`;
+Remove everything else: hands, table, floor, wall, other objects and the whole original background. Draw no shadow of any kind: no ground shadow, no drop shadow. Place the single object in the centre on a pure solid white background, with a clear margin all around it. No text, no logos, nothing copied from image 2.`;
 
-const META_PROMPT = `The image shows an old keepsake someone scanned for a room-decorating game. Reply with only this JSON:
+const META_PROMPT = `This photo shows an old keepsake someone scanned for a room-decorating game. Reply with only this JSON and nothing else:
 {"name": "the object in Simplified Chinese, at most 8 characters", "footprint": [w, d], "height": h, "small": true or false, "question": "one gentle question in Simplified Chinese that invites the owner to tell the story of this object"}
 footprint and height are whole numbers of floor cells from 1 to 5, where one cell is about 40 cm: a photo or book is [1,1] height 1, a chair [2,2] height 2, a wardrobe [3,1] height 5. small is true if it would naturally stand on a table.`;
 
-const MAX_UPLOAD = 6 * 1024 * 1024;
+const MAX_UPLOAD = 3 * 1024 * 1024;
+const MAX_THUMB = 300 * 1024;
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"];
 
 function json(data, status = 200) {
@@ -23,7 +24,7 @@ function json(data, status = 200) {
 }
 
 function aiEnabled(env) {
-  return env.AI_ENABLED === "true" && !!env.OPENAI_API_KEY;
+  return env.AI_ENABLED === "true";
 }
 
 function dayKey() {
@@ -38,7 +39,7 @@ async function readCount(env, key) {
   return Number(await env.USAGE.get(key)) || 0;
 }
 
-/* Daily caps cap the bill: KV counts can drift slightly under load, so the limits are set with margin. */
+/* The daily caps keep use inside the free Neuron allowance. KV counts can drift slightly under load. */
 async function usage(env, request) {
   const day = dayKey();
   const allKey = `all:${day}`;
@@ -55,24 +56,11 @@ async function addUse(env, u, delta) {
   ]);
 }
 
-/* The Workers free plan allows about 10 ms of CPU per request, so large bodies are forwarded, never parsed or re-encoded. */
-async function requestImage(env, request, buffer, type) {
-  const style = await env.ASSETS.fetch(new Request(new URL("/assets/style_ref.jpg", request.url)));
-  if (!style.ok) throw new Error("style reference is missing");
-  const form = new FormData();
-  form.append("model", env.IMAGE_MODEL);
-  form.append("prompt", IMAGE_PROMPT);
-  form.append("image[]", new File([buffer], "photo.jpg", { type }));
-  form.append("image[]", new File([await style.arrayBuffer()], "style.jpg", { type: "image/jpeg" }));
-  form.append("size", "1024x1024");
-  form.append("quality", env.IMAGE_QUALITY);
-  form.append("background", "transparent");
-  form.append("output_format", "png");
-  return fetch(`${env.OPENAI_BASE}/images/edits`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: form,
-  });
+function guard(request, env) {
+  const origin = request.headers.get("origin");
+  if (origin && new URL(origin).host !== new URL(request.url).host) return json({ error: "forbidden" }, 403);
+  if (!aiEnabled(env)) return json({ error: "not_configured" }, 503);
+  return null;
 }
 
 async function convert(request, env) {
@@ -91,49 +79,44 @@ async function convert(request, env) {
   if (!buffer.byteLength || buffer.byteLength > MAX_UPLOAD) return json({ error: "too_large" }, 413);
   await addUse(env, u, 1);
 
-  let upstream;
   try {
-    upstream = await requestImage(env, request, buffer, type);
+    const style = await env.ASSETS.fetch(new Request(new URL("/assets/style_ref.jpg", request.url)));
+    if (!style.ok) throw new Error("style reference is missing");
+    const form = new FormData();
+    form.append("prompt", IMAGE_PROMPT);
+    form.append("width", "1024");
+    form.append("height", "1024");
+    form.append("input_image_0", new File([buffer], "photo.jpg", { type }));
+    form.append("input_image_1", new File([await style.arrayBuffer()], "style.jpg", { type: "image/jpeg" }));
+    const packed = new Response(form);
+    const result = await env.AI.run(env.IMAGE_MODEL, { multipart: { body: packed.body, contentType: packed.headers.get("content-type") } });
+    if (!result?.image) throw new Error("no image in the response");
+    return json({ image: result.image });
   } catch (e) {
     await addUse(env, u, 0); // a failed generation gives the use back
-    console.error("convert network failure", e.message);
-    return json({ error: "upstream_network" }, 502);
+    console.error("convert failed", e.message);
+    return json({ error: /quota|neuron|limit/i.test(e.message) ? "ai_quota" : "ai_failed" }, 502);
   }
-  if (upstream.ok) {
-    return new Response(upstream.body, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-  }
-  await addUse(env, u, 0);
-  const err = await upstream.json().catch(() => ({}));
-  console.error("convert failed", upstream.status, err.error?.code, err.error?.message);
-  const refused = upstream.status === 400 && /moderation|safety/i.test(`${err.error?.code} ${err.error?.message}`);
-  return json({ error: refused ? "refused" : `upstream_${upstream.status}` }, refused ? 422 : 502);
 }
 
-/* Name and footprint are a nicety, so a failure here only leaves the defaults. The page sends the photo as a data URL. */
+/* Name and footprint are a nicety: the page keeps its defaults if this fails. It takes a small thumbnail as a data URL. */
 async function describe(request, env) {
   const blocked = guard(request, env);
   if (blocked) return blocked;
-  if (Number(request.headers.get("content-length")) > MAX_UPLOAD * 1.4) return json({ error: "too_large" }, 413);
+  if (Number(request.headers.get("content-length")) > MAX_THUMB) return json({ error: "too_large" }, 413);
   const dataUrl = await request.text();
   if (!dataUrl.startsWith("data:image/")) return json({ error: "bad_type" }, 415);
-  const body = `{"model":${JSON.stringify(env.TEXT_MODEL)},"store":false,"text":{"format":{"type":"json_object"}},"input":[{"role":"user","content":[{"type":"input_text","text":${JSON.stringify(META_PROMPT)}},{"type":"input_image","detail":"low","image_url":"${dataUrl.replace(/[^A-Za-z0-9+/=:;,\-]/g, "")}"}]}]}`;
-  const r = await fetch(`${env.OPENAI_BASE}/responses`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" },
-    body,
-  });
-  if (!r.ok) {
-    console.error("describe failed", r.status);
-    return json({ error: `upstream_${r.status}` }, 502);
+  try {
+    const result = await env.AI.run(env.TEXT_MODEL, {
+      messages: [{ role: "user", content: [{ type: "text", text: META_PROMPT }, { type: "image_url", image_url: { url: dataUrl } }] }],
+      max_tokens: 900,
+      chat_template_kwargs: { enable_thinking: false },
+    });
+    return json({ text: result?.choices?.[0]?.message?.content ?? result?.response ?? "" });
+  } catch (e) {
+    console.error("describe failed", e.message);
+    return json({ error: "ai_failed" }, 502);
   }
-  return new Response(r.body, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-}
-
-function guard(request, env) {
-  const origin = request.headers.get("origin");
-  if (origin && new URL(origin).host !== new URL(request.url).host) return json({ error: "forbidden" }, 403);
-  if (!aiEnabled(env)) return json({ error: "not_configured" }, 503);
-  return null;
 }
 
 export default {
@@ -144,13 +127,9 @@ export default {
       const u = await usage(env, request);
       return json({ enabled: true, left: Math.max(0, Math.min(u.dailyMax - u.all, u.ipMax - u.ip)) });
     }
-    if (pathname === "/api/convert") {
+    if (pathname === "/api/convert" || pathname === "/api/describe") {
       if (request.method !== "POST") return json({ error: "method" }, 405);
-      return convert(request, env);
-    }
-    if (pathname === "/api/describe") {
-      if (request.method !== "POST") return json({ error: "method" }, 405);
-      return describe(request, env);
+      return pathname === "/api/convert" ? convert(request, env) : describe(request, env);
     }
     if (pathname.startsWith("/api/")) return json({ error: "not_found" }, 404);
     return env.ASSETS.fetch(request);

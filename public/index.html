@@ -583,6 +583,11 @@ button{font-family:inherit}
       var pl = video.play(); if (pl && pl.catch) pl.catch(function () {});
     }).catch(onFail);
   }
+  function scaledCopy(canvas, size) {
+    var c = el('canvas'); c.width = c.height = size;
+    c.getContext('2d').drawImage(canvas, 0, 0, size, size);
+    return c;
+  }
   function grabSquare(source, sw, sh) {
     var side = Math.min(sw, sh), size = Math.min(1024, side), c = el('canvas');
     c.width = c.height = size;
@@ -611,7 +616,10 @@ button{font-family:inherit}
             [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) {
               var ax = nx + o[0], ay = ny + o[1]; if (ax < 0 || ay < 0 || ax >= W2 || ay >= W2) return;
               var m = ay * W2 + ax; if (seen[m]) return;
-              if (Math.abs(d[m * 4] - d[n * 4]) + Math.abs(d[m * 4 + 1] - d[n * 4 + 1]) + Math.abs(d[m * 4 + 2] - d[n * 4 + 2]) < 18) { seen[m] = 1; st.push(m); }
+              /* Spread through the white background and any pale neutral shadow on it; coloured surfaces and the dark outline stop the fill. */
+              var lo = Math.min(d[m * 4], d[m * 4 + 1], d[m * 4 + 2]), hi = Math.max(d[m * 4], d[m * 4 + 1], d[m * 4 + 2]);
+              var pale = lo > 200 || (lo > 150 && hi - lo < 14);
+              if (pale || Math.abs(d[m * 4] - d[n * 4]) + Math.abs(d[m * 4 + 1] - d[n * 4 + 1]) + Math.abs(d[m * 4 + 2] - d[n * 4 + 2]) < 8) { seen[m] = 1; st.push(m); }
             });
           }
           x.putImageData(im, 0, 0);
@@ -872,7 +880,7 @@ button{font-family:inherit}
       function noCam() { note.textContent = '这里不能直接开镜头。按快门会调用手机相机，电脑上可选一张照片。'; }
       openCamera(video, noCam);
       video.addEventListener('playing', function () { note.textContent = '把老物件放进框内，按下快门'; });
-      serverReady.then(function (on) { if (on && S.screen === 'scan') p.appendChild(el('div', { class: 'ainote', text: '照片会传给 OpenAI 生成游戏物件，本站不保存' })); });
+      serverReady.then(function (on) { if (on && S.screen === 'scan') p.appendChild(el('div', { class: 'ainote', text: '照片会传给 Cloudflare AI 生成游戏物件，本站不保存' })); });
       p.appendChild(hot(55, 150, 145, 240, '返回', function () { go('room'); }));
       p.appendChild(hot(995, 150, 1080, 240, '通知', bell));
       var busy = false;
@@ -926,23 +934,23 @@ button{font-family:inherit}
           return serverReady.then(function (enabled) {
             if (!live) return;
             if (!enabled) { live = false; finish(null, 'none'); return; }
-            line.textContent = '正在画成游戏风格…'; sub.textContent = '通常要一分钟左右，照片只用来生成这件物件。';
+            line.textContent = '正在画成游戏风格…'; sub.textContent = '通常十几秒，照片只用来生成这件物件。';
             /* Name and footprint come from their own request, so a failure there still leaves the image. */
-            var meta = fetch('/api/describe', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: photo, signal: ctl.signal }).then(function (res) { return res.ok ? res.json() : {}; }).then(function (d) {
-              var text = ((d.output || []).reduce(function (all, o) { return all.concat(o.content || []); }, []).filter(function (x) { return x.type === 'output_text'; })[0] || {}).text;
-              return text ? JSON.parse(text) : {};
+            var meta = fetch('/api/describe', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: scaledCopy(c, 256).toDataURL('image/jpeg', 0.8), signal: ctl.signal }).then(function (res) { return res.ok ? res.json() : {}; }).then(function (d) {
+              var found = String(d.text || '').match(/\{[\s\S]*\}/);
+              return found ? JSON.parse(found[0]) : {};
             }).catch(function () { return {}; });
-            return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (blob) {
+            return new Promise(function (r) { scaledCopy(c, 512).toBlob(r, 'image/jpeg', 0.88); }).then(function (blob) {
               return fetch('/api/convert', { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: blob, signal: ctl.signal });
             }).then(function (res) {
               return res.json().catch(function () { return {}; }).then(function (data) {
                 if (!res.ok) { var err = new Error(data.error || 'failed'); err.code = data.error || 'http_' + res.status; throw err; }
-                var b64 = data.data && data.data[0] && data.data[0].b64_json;
-                if (!b64) { var bad = new Error('no image'); bad.code = 'no_image'; throw bad; }
-                return 'data:image/png;base64,' + b64;
+                if (!data.image) { var bad = new Error('no image'); bad.code = 'no_image'; throw bad; }
+                return (data.image.indexOf('/9j/') === 0 ? 'data:image/jpeg;base64,' : 'data:image/png;base64,') + data.image;
               });
             }).then(function (image) {
-              return Promise.all([trimSprite(image), meta]);
+              /* The name is optional: never let it hold up the finished item for long. */
+              return Promise.all([trimSprite(image), Promise.race([meta, new Promise(function (r) { setTimeout(function () { r({}); }, 12000); })])]);
             }).then(function (all) {
               if (!live) return;
               live = false;
