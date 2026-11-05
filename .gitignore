@@ -3,3 +3,4 @@ node_modules/
 .DS_Store
 public/assets/isl_school.png
 public/assets/isl_garden.png
+.dev.vars

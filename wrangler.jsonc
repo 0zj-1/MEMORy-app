@@ -1,8 +1,23 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "memory-app",
-  "compatibility_date": "2026-11-05",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-05-03",
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "kv_namespaces": [{ "binding": "USAGE", "id": "de810ea572ef4d7184f4cfd91d872b3c" }],
+  "ratelimits": [
+    { "name": "BURST", "namespace_id": "20261105", "simple": { "limit": 3, "period": 60 } }
+  ],
+  "vars": {
+    "OPENAI_BASE": "https://api.openai.com/v1",
+    "IMAGE_MODEL": "gpt-image-2.5-flare",
+    "IMAGE_QUALITY": "medium",
+    "TEXT_MODEL": "gpt-5.6-terra",
+    "DAILY_LIMIT": "40",
+    "IP_DAILY_LIMIT": "10"
   }
 }
