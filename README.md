@@ -17,7 +17,7 @@
 npx wrangler secret put OPENAI_API_KEY
 ```
 
-沒有金鑰、額度用完或出錯時，會改用瀏覽器內的本機風格化。模型和每日上限都在 `wrangler.jsonc` 的 `vars`（`DAILY_LIMIT` 是全站每日上限，`IP_DAILY_LIMIT` 是每個 IP 的每日上限）。
+沒有金鑰、額度用完或出錯時，會改用瀏覽器內的本機處理：以圖割（GrabCut）從畫面中央認出主體、去背成透明底，再壓色加描邊。背景單純、物件居中時效果最好，照片也不會上傳。模型和每日上限都在 `wrangler.jsonc` 的 `vars`（`DAILY_LIMIT` 是全站每日上限，`IP_DAILY_LIMIT` 是每個 IP 的每日上限）。
 
 本機測試時，把假金鑰寫進 `.dev.vars`。這個檔案不會被提交。
 

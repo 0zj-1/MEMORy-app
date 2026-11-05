@@ -84,7 +84,7 @@ button{font-family:inherit}
 .pair{position:absolute;left:50px;right:50px;top:360px;display:grid;grid-template-columns:1fr 1fr;gap:30px}
 .pair figure{margin:0;display:flex;flex-direction:column;gap:12px;align-items:center;color:#fff;font-size:40px}
 .pair img{width:100%;height:560px;object-fit:contain;border-radius:40px;background:#3f4431;display:block}
-.pair .after img{background:#f6e2b4}
+.pair .after img{background-color:#fff;background-image:linear-gradient(45deg,#d9d2c3 25%,transparent 25%,transparent 75%,#d9d2c3 75%),linear-gradient(45deg,#d9d2c3 25%,transparent 25%,transparent 75%,#d9d2c3 75%);background-size:48px 48px;background-position:0 0,24px 24px}
 .steppers{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
 .stepper{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;justify-items:center;background:#fffaf0;border:4px solid #d8bf97;border-radius:32px;padding:14px 6px;row-gap:6px}
 .stepper span{grid-column:1/4;color:#6d543f;font-size:36px}
@@ -626,38 +626,160 @@ button{font-family:inherit}
       img.src = url;
     });
   }
-  /* Without AI: cut the object from its background, flatten the colours and add the game's brown outline. */
+  /* Without AI: find the subject with a graph cut (GrabCut). The photo's edge is background, the centre is probably the subject,
+     and colour models plus edge strength decide everything in between. */
+  function kmeansModel(rgb, picks, K) {
+    var n = picks.length, cents = [], i, k, c;
+    if (!n) return [];
+    for (k = 0; k < K; k++) { var seed = picks[Math.floor((k + 0.5) / K * n)] * 3; cents.push([rgb[seed], rgb[seed + 1], rgb[seed + 2]]); }
+    var lab = new Int32Array(n);
+    for (var it = 0; it < 5; it++) {
+      var sum = cents.map(function () { return [0, 0, 0, 0]; });
+      for (i = 0; i < n; i++) {
+        var o = picks[i] * 3, best = 0, bd = 1e12;
+        for (k = 0; k < K; k++) { c = cents[k]; var d = (rgb[o] - c[0]) * (rgb[o] - c[0]) + (rgb[o + 1] - c[1]) * (rgb[o + 1] - c[1]) + (rgb[o + 2] - c[2]) * (rgb[o + 2] - c[2]); if (d < bd) { bd = d; best = k; } }
+        lab[i] = best; var t = sum[best]; t[0] += rgb[o]; t[1] += rgb[o + 1]; t[2] += rgb[o + 2]; t[3]++;
+      }
+      for (k = 0; k < K; k++) if (sum[k][3]) cents[k] = [sum[k][0] / sum[k][3], sum[k][1] / sum[k][3], sum[k][2] / sum[k][3]];
+    }
+    var vars = cents.map(function () { return [0, 0, 0, 0]; });
+    for (i = 0; i < n; i++) { var q = picks[i] * 3, m = cents[lab[i]], v = vars[lab[i]]; v[0] += (rgb[q] - m[0]) * (rgb[q] - m[0]); v[1] += (rgb[q + 1] - m[1]) * (rgb[q + 1] - m[1]); v[2] += (rgb[q + 2] - m[2]) * (rgb[q + 2] - m[2]); v[3]++; }
+    return cents.map(function (m, idx) {
+      var v = vars[idx], cnt = Math.max(1, v[3]), a = v[0] / cnt + 25, b = v[1] / cnt + 25, e = v[2] / cnt + 25;
+      return { m: m, v: [a, b, e], w: -Math.log(cnt / n + 1e-6) + 0.5 * Math.log(a * b * e) };
+    }).filter(function (_, idx) { return vars[idx][3] > 0; });
+  }
+  function modelCost(model, r, g, b) {
+    var best = 1e9;
+    for (var k = 0; k < model.length; k++) {
+      var c = model[k], x = c.w + 0.5 * ((r - c.m[0]) * (r - c.m[0]) / c.v[0] + (g - c.m[1]) * (g - c.m[1]) / c.v[1] + (b - c.m[2]) * (b - c.m[2]) / c.v[2]);
+      if (x < best) best = x;
+    }
+    return best;
+  }
+  function maxFlowCut(nodes, from, to, cap, head, next, s, t) {
+    var level = new Int32Array(nodes), iter = new Int32Array(nodes), queue = new Int32Array(nodes), path = new Int32Array(nodes);
+    function bfs() {
+      level.fill(-1); level[s] = 0; var a = 0, b = 0; queue[b++] = s;
+      while (a < b) { var u = queue[a++]; for (var e = head[u]; e >= 0; e = next[e]) if (cap[e] > 1e-6 && level[to[e]] < 0) { level[to[e]] = level[u] + 1; queue[b++] = to[e]; } }
+      return level[t] >= 0;
+    }
+    while (bfs()) {
+      iter.set(head);
+      var depth = 0, u = s;
+      for (;;) {
+        if (u === t) {
+          var f = 1e12, i;
+          for (i = 0; i < depth; i++) if (cap[path[i]] < f) f = cap[path[i]];
+          var cutAt = 0, found = false;
+          for (i = 0; i < depth; i++) { cap[path[i]] -= f; cap[path[i] ^ 1] += f; if (!found && cap[path[i]] <= 1e-6) { cutAt = i; found = true; } }
+          depth = cutAt; u = from[path[cutAt]];
+          continue;
+        }
+        var e = iter[u];
+        while (e >= 0 && !(cap[e] > 1e-6 && level[to[e]] === level[u] + 1)) e = next[e];
+        iter[u] = e;
+        if (e >= 0) { path[depth++] = e; u = to[e]; continue; }
+        if (u === s) break;
+        level[u] = -1; depth--; u = from[path[depth]];
+      }
+    }
+    return level;
+  }
+  function grabCut(src) {
+    var N = 128, c = el('canvas'); c.width = c.height = N;
+    var x = c.getContext('2d'); x.filter = 'blur(0.6px)'; x.drawImage(src, 0, 0, N, N); x.filter = 'none';
+    var px = x.getImageData(0, 0, N, N).data, rgb = new Float32Array(N * N * 3), i, j, p;
+    for (i = 0; i < N * N; i++) { rgb[i * 3] = px[i * 4]; rgb[i * 3 + 1] = px[i * 4 + 1]; rgb[i * 3 + 2] = px[i * 4 + 2]; }
+    var band = Math.round(N * 0.06), alpha = new Uint8Array(N * N), mid = (N - 1) / 2, sigma = N * 0.34;
+    var fixedBg = new Uint8Array(N * N), prior = new Float32Array(N * N);
+    for (j = 0; j < N; j++) for (i = 0; i < N; i++) {
+      p = j * N + i;
+      if (i < band || j < band || i >= N - band || j >= N - band) fixedBg[p] = 1; else alpha[p] = 1;
+      prior[p] = Math.exp(-((i - mid) * (i - mid) + (j - mid) * (j - mid)) / (2 * sigma * sigma));
+    }
+    var dirs = [[1, 0, 1], [0, 1, 1], [1, 1, 0.707], [1, -1, 0.707]], sumD = 0, cntD = 0;
+    for (j = 0; j < N; j++) for (i = 0; i < N; i++) dirs.forEach(function (d) {
+      var a = i + d[0], b = j + d[1]; if (a < 0 || b < 0 || a >= N || b >= N) return;
+      var P = (j * N + i) * 3, Q = (b * N + a) * 3, dr = rgb[P] - rgb[Q], dg = rgb[P + 1] - rgb[Q + 1], db = rgb[P + 2] - rgb[Q + 2];
+      sumD += dr * dr + dg * dg + db * db; cntD++;
+    });
+    var beta = 1 / (2 * (sumD / cntD) + 1e-6), gamma = 22;
+    var nodes = N * N + 2, S = N * N, T = N * N + 1, maxE = (N * N * 2 + N * N * 8) * 2;
+    for (var round = 0; round < 3; round++) {
+      var fgP = [], bgP = [];
+      for (p = 0; p < N * N; p++) (alpha[p] ? fgP : bgP).push(p);
+      if (fgP.length < 20 || bgP.length < 20) break;
+      var fgM = kmeansModel(rgb, fgP, 5), bgM = kmeansModel(rgb, bgP, 5);
+      var from = new Int32Array(maxE), to = new Int32Array(maxE), cap = new Float32Array(maxE), next = new Int32Array(maxE), head = new Int32Array(nodes).fill(-1), en = 0;
+      var add = function (u, v, cu, cv) {
+        from[en] = u; to[en] = v; cap[en] = cu; next[en] = head[u]; head[u] = en++;
+        from[en] = v; to[en] = u; cap[en] = cv; next[en] = head[v]; head[v] = en++;
+      };
+      for (j = 0; j < N; j++) for (i = 0; i < N; i++) {
+        p = j * N + i; var o = p * 3;
+        if (fixedBg[p]) { add(p, T, 1e6, 0); }
+        else {
+          var costF = modelCost(fgM, rgb[o], rgb[o + 1], rgb[o + 2]) + 1.4 * (1 - prior[p]);
+          var costB = modelCost(bgM, rgb[o], rgb[o + 1], rgb[o + 2]) + 1.4 * prior[p];
+          add(S, p, costB, 0); add(p, T, costF, 0);
+        }
+        for (var k4 = 0; k4 < 4; k4++) {
+          var a = i + dirs[k4][0], b = j + dirs[k4][1]; if (a < 0 || b < 0 || a >= N || b >= N) continue;
+          var o2 = (b * N + a) * 3, dr = rgb[o] - rgb[o2], dg = rgb[o + 1] - rgb[o2 + 1], db = rgb[o + 2] - rgb[o2 + 2];
+          var w = gamma * dirs[k4][2] * Math.exp(-beta * (dr * dr + dg * dg + db * db));
+          add(p, b * N + a, w, w);
+        }
+      }
+      var level = maxFlowCut(nodes, from, to, cap, head, next, S, T);
+      for (p = 0; p < N * N; p++) alpha[p] = level[p] >= 0 ? 1 : 0;
+    }
+    /* keep the region nearest the centre, then fill its holes */
+    var lab = new Int32Array(N * N), best = 0, bestScore = 0, cur = 0, stack = [];
+    for (p = 0; p < N * N; p++) {
+      if (!alpha[p] || lab[p]) continue;
+      cur++; lab[p] = cur; stack.push(p); var score = 0;
+      while (stack.length) {
+        var u = stack.pop(); score += 0.2 + prior[u]; var ux = u % N, uy = (u / N) | 0;
+        if (ux > 0 && alpha[u - 1] && !lab[u - 1]) { lab[u - 1] = cur; stack.push(u - 1); }
+        if (ux < N - 1 && alpha[u + 1] && !lab[u + 1]) { lab[u + 1] = cur; stack.push(u + 1); }
+        if (uy > 0 && alpha[u - N] && !lab[u - N]) { lab[u - N] = cur; stack.push(u - N); }
+        if (uy < N - 1 && alpha[u + N] && !lab[u + N]) { lab[u + N] = cur; stack.push(u + N); }
+      }
+      if (score > bestScore) { bestScore = score; best = cur; }
+    }
+    var mask = new Uint8Array(N * N), outside = new Uint8Array(N * N), area = 0;
+    for (p = 0; p < N * N; p++) if (lab[p] === best && best) mask[p] = 1;
+    for (i = 0; i < N; i++) { [i, (N - 1) * N + i, i * N, i * N + N - 1].forEach(function (b0) { if (!mask[b0] && !outside[b0]) { outside[b0] = 1; stack.push(b0); } }); }
+    while (stack.length) {
+      var v = stack.pop(), vx = v % N, vy = (v / N) | 0;
+      [vx > 0 ? v - 1 : -1, vx < N - 1 ? v + 1 : -1, vy > 0 ? v - N : -1, vy < N - 1 ? v + N : -1].forEach(function (m) { if (m >= 0 && !mask[m] && !outside[m]) { outside[m] = 1; stack.push(m); } });
+    }
+    for (p = 0; p < N * N; p++) { if (!outside[p]) mask[p] = 1; if (mask[p]) area++; }
+    return { N: N, mask: mask, ratio: area / (N * N) };
+  }
   function localStylize(src) {
     var S2 = 480, c = el('canvas'); c.width = c.height = S2;
-    var x = c.getContext('2d'); x.filter = 'blur(1.5px) saturate(1.2)'; x.drawImage(src, 0, 0, S2, S2); x.filter = 'none';
-    var im = x.getImageData(0, 0, S2, S2), d = im.data, seen = new Uint8Array(S2 * S2), st = [];
-    for (var i = 0; i < S2; i++) { st.push(i, (S2 - 1) * S2 + i, i * S2, i * S2 + S2 - 1); }
-    st.forEach(function (n) { seen[n] = 1; });
-    var removed = st.length;
-    while (st.length) {
-      var n = st.pop(), nx = n % S2, ny = (n / S2) | 0;
-      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) {
-        var ax = nx + o[0], ay = ny + o[1]; if (ax < 0 || ay < 0 || ax >= S2 || ay >= S2) return;
-        var m = ay * S2 + ax; if (seen[m]) return;
-        var diff = Math.abs(d[m * 4] - d[n * 4]) + Math.abs(d[m * 4 + 1] - d[n * 4 + 1]) + Math.abs(d[m * 4 + 2] - d[n * 4 + 2]);
-        if (diff < 20) { seen[m] = 1; removed++; st.push(m); }
-      });
-    }
-    var ratio = removed / (S2 * S2), keepAll = ratio < 0.08 || ratio > 0.9, pad = S2 * 0.04;
-    var L = 7, tone = function (v) { return Math.round(Math.round(v / 255 * (L - 1)) / (L - 1) * 255); };
+    var x = c.getContext('2d'); x.filter = 'blur(1.2px) saturate(1.2)'; x.drawImage(src, 0, 0, S2, S2); x.filter = 'none';
+    var cut = grabCut(src), good = cut.ratio > 0.03 && cut.ratio < 0.86;
+    var mc = el('canvas'); mc.width = mc.height = cut.N; var mx = mc.getContext('2d'), md = mx.createImageData(cut.N, cut.N);
+    for (var q = 0; q < cut.N * cut.N; q++) md.data[q * 4 + 3] = good ? cut.mask[q] * 255 : 255;
+    mx.putImageData(md, 0, 0);
+    var big = el('canvas'); big.width = big.height = S2; var bx = big.getContext('2d'); bx.filter = 'blur(2px)'; bx.drawImage(mc, 0, 0, S2, S2); bx.filter = 'none';
+    var alphaData = bx.getImageData(0, 0, S2, S2).data;
+    var im = x.getImageData(0, 0, S2, S2), d = im.data, L = 7, tone = function (v) { return Math.round(Math.round(v / 255 * (L - 1)) / (L - 1) * 255); };
     for (var p = 0; p < S2 * S2; p++) {
-      var i4 = p * 4, px = p % S2, py = (p / S2) | 0;
+      var i4 = p * 4;
       d[i4] = Math.min(255, tone(d[i4]) * 1.04 + 6); d[i4 + 1] = tone(d[i4 + 1]); d[i4 + 2] = Math.max(0, tone(d[i4 + 2]) * 0.92);
-      var inBox = px > pad && py > pad && px < S2 - pad && py < S2 - pad;
-      d[i4 + 3] = keepAll ? (inBox ? 255 : 0) : (seen[p] ? 0 : 255);
+      var a = alphaData[i4 + 3]; d[i4 + 3] = a < 110 ? 0 : a > 150 ? 255 : Math.round((a - 110) / 40 * 255);
     }
     x.putImageData(im, 0, 0);
     var out = el('canvas'); out.width = out.height = S2 + 28; var o = out.getContext('2d');
     var tint = el('canvas'); tint.width = tint.height = S2; var tx = tint.getContext('2d');
     tx.drawImage(c, 0, 0); tx.globalCompositeOperation = 'source-in'; tx.fillStyle = '#4a2c1a'; tx.fillRect(0, 0, S2, S2);
-    for (var a = 0; a < 16; a++) o.drawImage(tint, 14 + Math.cos(a / 16 * 6.283) * 7, 14 + Math.sin(a / 16 * 6.283) * 7);
+    for (var k = 0; k < 16; k++) o.drawImage(tint, 14 + Math.cos(k / 16 * 6.283) * 6, 14 + Math.sin(k / 16 * 6.283) * 6);
     o.drawImage(c, 14, 14);
-    return { sprite: out.toDataURL('image/png'), keepAll: keepAll };
+    return { sprite: out.toDataURL('image/png'), cut: good };
   }
   function cleanSvg(text) {
     var doc = new DOMParser().parseFromString(String(text), 'image/svg+xml'), root = doc.documentElement;
@@ -772,14 +894,23 @@ button{font-family:inherit}
       var ctl = new AbortController(), live = true, stageNow = S.screen;
       header(p, 'AI 转换中', function () { live = false; ctl.abort(); go('scan'); });
       p.appendChild(el('div', { class: 'convbox' }, el('img', { src: photo, alt: '刚拍下的老物件' }), el('div', { class: 'beam loop' })));
-      var line = el('div', { class: 'convtext', text: '正在识别物件…' }), sub = el('div', { class: 'convsub', text: '第一次使用时，可能会先询问是否允许调用 Claude。' });
+      var line = el('div', { class: 'convtext', text: '正在识别物件…' }), sub = el('div', { class: 'convsub', text: '' });
       p.appendChild(line); p.appendChild(sub);
       p.appendChild(el('button', { class: 'btn ghost', type: 'button', text: '不用 AI，直接风格化', style: 'position:absolute;left:210px;right:210px;bottom:90px', onclick: function () { live = false; ctl.abort(); finish(null, 'stopped'); } }));
       function finish(ai, reason) {
-        var local = localStylize(c);
-        S.cap = ai ? { photo: photo, sprite: ai.sprite, name: ai.name, f: ai.f, h: ai.h, small: ai.small, question: ai.question, source: 'ai' } :
-          { photo: photo, sprite: local.sprite, name: '老物件', f: [1, 1], h: 1, small: true, question: '这件东西是怎么来到你身边的？', source: 'local', reason: reason };
-        go('scanResult');
+        if (ai) {
+          S.cap = { photo: photo, sprite: ai.sprite, name: ai.name, f: ai.f, h: ai.h, small: ai.small, question: ai.question, source: 'ai' };
+          go('scanResult'); return;
+        }
+        line.textContent = '正在抠出主体…'; sub.textContent = '只在这台设备上处理，照片不会上传。';
+        setTimeout(function () {
+          var local = localStylize(c);
+          var done = function (sprite) {
+            S.cap = { photo: photo, sprite: sprite, name: '老物件', f: [1, 1], h: 1, small: true, question: '这件东西是怎么来到你身边的？', source: 'local', reason: reason, cut: local.cut };
+            go('scanResult');
+          };
+          trimSprite(local.sprite).then(done).catch(function () { done(local.sprite); });
+        }, 30);
       }
       aiReady.then(function (sample) {
         if (!live) return;
@@ -829,6 +960,7 @@ button{font-family:inherit}
       p.style.background = '#4f543e';
       header(p, '转换完成', function () { go('scan'); });
       var srcText = cap.source === 'ai' ? 'AI 已转换成游戏风格' : cap.source === 'sample' ? '示例物件' :
+        !cap.cut ? '没有认出主体，请把物件放在画面中间重拍' : !cap.reason || cap.reason === 'none' || cap.reason === 'stopped' ? '已抠出主体，透明底' :
         cap.reason === 'denied' ? '未允许使用 AI，已改用本机风格化' : cap.reason === 'stopped' ? '已使用本机风格化' :
         cap.reason === 'daily_limit' ? '今天的 AI 额度用完了，已改用本机风格化' : cap.reason === 'too_fast' ? '操作太频繁，这次改用本机风格化' :
         cap.reason === 'refused' ? 'AI 无法处理这张照片，已改用本机风格化' : cap.reason === 'error' ? 'AI 暂时出错，已改用本机风格化' : 'AI 未连接，已改用本机风格化';
