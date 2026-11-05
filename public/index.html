@@ -616,9 +616,17 @@ button{font-family:inherit}
           }
           x.putImageData(im, 0, 0);
         }
-        var l = W2, t = W2, r = -1, b = -1;
-        for (var y = 0; y < W2; y++) for (var xx = 0; xx < W2; xx++) if (d[(y * W2 + xx) * 4 + 3] > 24) { if (xx < l) l = xx; if (xx > r) r = xx; if (y < t) t = y; if (y > b) b = y; }
-        if (r < 0) { reject(new Error('empty image')); return; }
+        /* Clear the faint haze generated images leave around a subject, and ignore stray specks when finding its bounds. */
+        var rows = new Int32Array(W2), cols = new Int32Array(W2), y, xx, al;
+        for (y = 0; y < W2; y++) for (xx = 0; xx < W2; xx++) {
+          al = (y * W2 + xx) * 4 + 3;
+          if (d[al] < 48) d[al] = 0;
+          if (d[al] > 128) { rows[y]++; cols[xx]++; }
+        }
+        x.putImageData(im, 0, 0);
+        var l = W2, t = W2, r = -1, b = -1, need = 3;
+        for (y = 0; y < W2; y++) { if (rows[y] >= need) { if (y < t) t = y; if (y > b) b = y; } if (cols[y] >= need) { if (y < l) l = y; if (y > r) r = y; } }
+        if (r < 0 || b < 0) { reject(new Error('empty image')); return; }
         var out = el('canvas'); out.width = r - l + 1; out.height = b - t + 1;
         out.getContext('2d').drawImage(c, -l, -t);
         resolve(out.toDataURL('image/png'));
